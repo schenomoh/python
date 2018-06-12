@@ -1,0 +1,120 @@
+#!/usr/bin/python
+########################################################
+#
+# 2018-01-17 - APR. 
+# Display CSV columns as rows
+#
+
+import os, sys, getopt
+
+FSLIST=[';', '|', ',', ':', "\t"] #FS (field separator) will be the one with the most occurence on the first line
+PATTERN='' #Text pattern to search in the input lines
+INVERT='false' #Return matching or non matching lines
+SHOWFULL='false' #Show empty columns
+NOHEADER='false'
+args=[] #Remaining script arguments to be processed
+header=[]
+fieldNum=0 #Counter on currently processed field
+lineNum=0 #Counter on currencly processed line
+
+########################################################
+# getopt fetch options from script arguments
+# Remaining arguments are stored in args[:]
+try:
+	optlist, args = getopt.getopt(sys.argv[1:], 'vrans:', ['raw', 'invert', 'all', 'line', 'noheader', 'separator='])
+	if(len(sys.argv)==1):	raise ValueError('No argument')
+except:
+	print " Usage: " + sys.argv[0] +" [OPTIONS] .. [PATTERN] [FILE]"
+	print "   -v, --invert: lines not matching [PATTERN]"
+	print "   -a, --all: output empty fields"
+	print "   -n, --noheader: csv has no header"
+	print "   -s, --separator=: fieldseparator"
+
+	sys.exit(2)
+
+for opt, a in optlist:
+	if opt in ('-v', '--invert'): INVERT='true'
+	if opt in ('-a', '--all'): SHOWFULL='true'
+	if opt in ('-n', '--noheader'): NOHEADER='true'
+	if opt in ('-s', '--separator'): FSLIST=[a.replace('\\t', '\t')]
+	print a
+
+########################################################
+# Set inputStream to flat file or std input
+if sys.stdin.isatty():
+	# Input stream is a flat file passed as last argument
+	try:
+		csvfile=open(args[-1], 'rb')
+		myFile = file.readlines(csvfile)
+	except:
+		print "ERROR: Unable to open file", args[-1]
+		sys.exit(3)
+	inputStream = myFile
+	# Remove flat file name from argument list
+	args=args[0:-1]
+else:
+	#InputStream is the standard input
+	inputStream=sys.stdin
+
+#Set pattern if there is a remaining argument to be processed
+if len(args) > 0: PATTERN = args[0]
+
+########################################################
+# Read inputStream
+for line in inputStream:
+	lineNum+=1
+	fieldNum=0
+
+	#Manage header
+	if lineNum == 1:
+		#Field separator detection
+		fsMaxCount=0
+		FS=FSLIST[0]
+		#Count occurences of FSLIST items
+		for fsTest in FSLIST:
+			cnt=line.count(fsTest)
+			#Use the FSLIST item with the more occurences as FS (field separator)
+			if cnt > fsMaxCount:
+				fsMaxCount=cnt
+				FS=fsTest
+    #Fetch field list and remove end of line caracters
+		fieldList=(line.replace('\n', '').replace('\r', '') ).split(FS)
+
+		#Store the field names from header
+		if NOHEADER=='false':
+			for name in fieldList:
+				if name == '': header.append("FIELD_"+str(fieldNum+1))
+				else: header.append(name)
+				fieldNum+=1
+			continue
+
+	#Fetch field list and remove end of line caracters
+	fieldList=(line.replace('\n', '').replace('\r', '') ).split(FS)
+
+	#Skip lines not grepped by PATTERN and INVERT conditions
+	if line.find(PATTERN) == -1 and INVERT=='false' or line.find(PATTERN) != -1 and INVERT=='true' :
+		continue
+
+	#Display values of current line as columns
+	for field in fieldList:
+		if field != '' or SHOWFULL != 'false':
+			#print lineNum
+			print lineNum,
+
+			#print field name
+			while 1==1:
+				try:
+					print header[fieldNum],
+					break
+				except:
+					header.append("FIELD_"+str(fieldNum+1))
+			
+			#print field value
+			print '= ' + field
+
+		fieldNum+=1
+
+#csvfile.close()
+sys.exit()
+
+
