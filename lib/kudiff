@@ -1,0 +1,193 @@
+#!/usr/bin/python
+
+import csv, io, sys, getopt, copy, ConfigParser
+
+def trace(message):
+	print message
+
+####################################################
+# Returns the list of duplicated values
+#
+def get_duplicate(list):
+	found=[]
+	duplicate=[]
+	for key in list:
+		#If we discover a new value, put it in "found"
+		#If the value was already found, it is a duplicate
+		if key not in found:
+			found.append(key)
+		else:
+			duplicate.append(key)
+	return duplicate
+
+####################################################
+# Class to store the result
+#
+class resultClass:
+
+	def __init__(self):
+		self.record=[]
+
+	#Add a result at the end of the record[] array
+	#def result(self, status, message, debug=""):
+	#	self.record.append({'status':status, 'message':message, 'debug':[]})
+
+	def success(self, message):
+		self.record.append({'status':'SUCCESS', 'message':message, 'debug':[]})
+	def failure(self, message):
+		self.record.append({'status':'FAILURE', 'message':message, 'debug':[]})
+	def warning(self, message):
+		self.record.append({'status':'WARNING', 'message':message, 'debug':[]})
+	def error(self, message):
+		self.record.append({'status':'ERROR', 'message':message, 'debug':[]})
+		self.bye()
+	def bye(self, return_code=0):
+		print self
+		sys.exit(return_code)
+
+	def extend(self, resultClass):
+		self.record.extend(copy.deepcopy(resultClass.record))
+
+	#Add a warning on the last result created
+	def debug(self, debug):
+		self.record[-1]['debug'].append(debug)
+
+	#Pretty print of the resultClass
+	def __str__(self):
+		res=""
+		for data in self.record:
+			if res != "": res+="\n"
+			res += str(data['status']) + " - " + str(data['message'])
+			for w in data['debug']:
+				res += "\n  DEBUG - "+str(w)
+		return res
+
+	#print override for python prompt
+	def __repr__(self):
+		return __str__(self)
+
+####################################################
+#Compare two argument lists and return a resultClass object
+#
+def diff(list1, list2):
+	res=resultClass()
+	duplicate1=get_duplicate(list1)
+	duplicate2=get_duplicate(list2)
+
+	if len(duplicate1) != 00 or len(duplicate2) != 00:
+		res.failure("Duplicates found")
+		res.debug( "Header1: " + str(duplicate1) )
+		res.debug( "Header2: " + str(duplicate2) )
+	else:
+		res.success("No duplicate found")
+	return res
+
+####################################################
+#
+# Main
+#
+
+res=resultClass()
+
+#----------------------------------------------------
+# Read param file
+try:
+	paramFile="diff.param"
+	param = ConfigParser.ConfigParser()
+	param.read(paramFile)
+	diffResult=resultClass()
+	if 'GLOBAL' not in param.sections():
+		raise
+except Exception as e:
+	res.error("Unable to find [GLOBAL] section in param file: '"+paramFile+"'")
+#Read headers
+
+#----------------------------------------------------
+# Check the file dialects
+try:
+	file1Path=param.get('HELLO', 'FILE1')
+	file2Path=param.get('HELLO', 'FILE2')
+
+	file1=open(file1Path, 'rb')
+	file2=open(file2Path, 'rb')
+
+	dialect1 = csv.Sniffer().sniff(file1.read(5000))
+	dialect2 = csv.Sniffer().sniff(file2.read(5000))
+
+	file1.seek(0)
+	file2.seek(0)
+
+	csv1=csv.reader(file1, dialect1)
+	csv2=csv.reader(file2, dialect2)
+
+except Exception as e:
+	res.error("Unable to open files to compare. "+ str(e))
+
+#----------------------------------------------------
+# Manage missmatching dialects
+dialect1_values={'dialect':str(dialect1), 
+	'delimiter':str(dialect1.delimiter),
+	'doublequote':str(dialect1.doublequote),
+	'escapechar':str(dialect1.escapechar),
+	'lineterminator':str(dialect1.lineterminator),
+	'quotechar':str(dialect1.quotechar),
+	'quoting':str(dialect1.quoting),
+	'skipinitialspace':str(dialect1.skipinitialspace)
+}
+
+dialect2_values={'dialect':str(dialect2), 
+	'delimiter':str(dialect2.delimiter),
+	'doublequote':str(dialect2.doublequote),
+	'escapechar':str(dialect2.escapechar),
+	'lineterminator':str(dialect2.lineterminator),
+	'quotechar':str(dialect2.quotechar),
+	'quoting':str(dialect2.quoting),
+	'skipinitialspace':str(dialect2.skipinitialspace)
+}
+
+failureLogged=False
+for key in dialect1_values:
+	if dialect1_values[key] !=  dialect2_values[key]:
+		if(not failureLogged):
+			failureLogged=True
+			res.failure("CSV dialect (format) missmatch")
+		res.debug(str(key) + " is '"+str( dialect1_values[key])
+		+ "' in file1 but '"+str( dialect2_values[key])+"' in file2")
+
+#----------------------------------------------------
+# Manage missmatching field order
+
+for header1 in csv1:
+	#header1=[i.lower() for i in header1]
+	break
+for header2 in csv2:
+	#header2=[i.lower() for i in header2]
+	break
+
+print header1
+print header2
+
+#Ensure there is no duplicate in the header
+if len(get_duplicate(header1)): res.error("Header 1 has duplicated fields: "+ str(get_duplicate(header1)))
+if len(get_duplicate(header2)):	res.error("Header 2 has duplicated fields: "+ str(get_duplicate(header1)))
+
+if header1 == header2:
+	res.success("Header2 match")
+elif header1[:len(header1)] == header2[:len(header1)]:
+	res.warning("Header2 match with additional fields")
+	res.debug("Additional fields: "+str(list(set(header2)-set(header1))))
+elif len(set(header1) - set(header2))==0:
+	res.failure("Header2 order missmatch")
+	res.debug("Header 1: "+ str(header1))
+	res.debug("Header 2: "+ str(header2))
+else:
+	res.failure("Header2 missmatch")
+	res.debug("Missing in header2:" + str(list(set(header1)-set(header2))))
+	res.debug("Missing in header1:" + str(list(set(header2)-set(header1))))
+
+
+#Get the compare key from param file
+print [i.strip().lower() for i in param.get('HELLO', 'COMPARE_KEY').split(',')]
+
+res.bye()
+
