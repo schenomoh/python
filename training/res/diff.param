@@ -1,0 +1,16 @@
+[GLOBAL]
+DEFAULTDIR_FILE1=.
+DEFAULTDIR_FILE2=.
+
+[OVERRIDE]
+LOAD_DATE=2018-16-02
+
+[HELLO]
+FILE1=../training/res/media_library.csv
+FILE2=../training/res/media_library2.csv
+
+IGNORE_FIELD=load_id, LAST_UPDATE,
+COMPARE_FIELD=Main artist, Album, Track Id, 
+
+
+
