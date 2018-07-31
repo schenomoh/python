@@ -1,16 +1,14 @@
 [GLOBAL]
-DEFAULTDIR_FILE1=.
-DEFAULTDIR_FILE2=.
+DIR1=$HOME/APR/python
+DIR2=$HOME/APR/python
 
 [OVERRIDE]
 LOAD_DATE=2018-16-02
 
 [HELLO]
-FILE1=../training/res/media_library.csv
-FILE2=../training/res/media_library2.csv
+FILE1=$DIR1/training/res/media_library.csv
+FILE2=$HOME/APR/python/training/res/media_library3.csv
 
 IGNORE_FIELD=load_id, LAST_UPDATE,
 COMPARE_FIELD=Main artist, Album, Track Id, 
-
-
 

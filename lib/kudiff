@@ -5,25 +5,26 @@
 #
 ####################################################
 
+# ./kudiff -p ../training/res/diff.param -r HELLO -1 ../training/res/media_library.csv -2 ../training/res/media_library.csv
 
 ### Sample param file ######
-#
 #[GLOBAL]
-#DEFAULTDIR_FILE1=.
-#DEFAULTDIR_FILE2=.
+#DIR1=$HOME/APR/python
+#DIR2=$HOME/APR/python
 #
 #[OVERRIDE]
 #LOAD_DATE=2018-16-02
 #
 #[HELLO]
-#FILE1=../training/res/media_library.csv
-#FILE2=../training/res/media_library2.csv
+#FILE1=$DIR1/training/res/media_library.csv
+#FILE2=$HOME/APR/python/training/res/media_library2.csv
 #
 #IGNORE_FIELD=load_id, LAST_UPDATE,
 #COMPARE_FIELD=Main artist, Album, Track Id, 
 
 
-import csv, io, sys, getopt, copy, ConfigParser
+
+import csv, io, sys, getopt, copy, ConfigParser, os
 import traceback
 #from inspect import currentframe, getframeinfo
 
@@ -52,6 +53,17 @@ class resultClass:
 
 	def __init__(self):
 		self.record=[]
+
+		currentdir=os.path.dirname(os.path.abspath(__file__))
+		self.paramfile_path=currentdir+"/kudiff.param"
+		self.dir1=currentdir
+		self.dir2=currentdir
+		
+		self.file1_path=None
+		self.file2_path=None
+		self.compare_rule=None
+		self.compare_key=None
+		self.compare_ignore=None
 
 	#Add a result at the end of the record[] array
 	#def result(self, status, message, debug=""):
@@ -94,47 +106,86 @@ class resultClass:
 ####################################################
 #Compare two argument lists and return a resultClass object
 #
-def diff(list1, list2):
-	res=resultClass()
-	duplicate1=get_duplicate(list1)
-	duplicate2=get_duplicate(list2)
-
-	if len(duplicate1) != 00 or len(duplicate2) != 00:
-		res.failure("Duplicates found")
-		res.debug( "Header1: " + str(duplicate1) )
-		res.debug( "Header2: " + str(duplicate2) )
-	else:
-		res.success("No duplicate found")
-	return res
+#def diff(list1, list2):
+ #	res=resultClass()
+ #	duplicate1=get_duplicate(list1)
+ #	duplicate2=get_duplicate(list2)
+ #
+ #	if len(duplicate1) != 00 or len(duplicate2) != 00:
+ #		res.failure("Duplicates found")
+ #		res.debug( "Header1: " + str(duplicate1) )
+ #		res.debug( "Header2: " + str(duplicate2) )
+ #	else:
+ #		res.success("No duplicate found")
+ #	return res
 
 ####################################################
 #
 # Main
 #
 
-res=resultClass()
-#print script.filename, script.lineno
-param_file="../training/res/diff.param"
-file_mnemo="HELLO"
+#----------------------------------------------------
+# getopt fetch options from script arguments
+# Remaining arguments are stored in args[:]
 
+res=resultClass()
+
+try:
+        optlist, args = getopt.getopt(sys.argv[1:], 'p:r:1:2:', ['param=', 'rule=', 'file1=', 'file2=', 'separator='])
+        if(len(sys.argv)==1):   raise ValueError('No argument')
+except:
+        print " Usage: " + sys.argv[0] +" [OPTIONS]"
+        print "   -p, --param: param file location"
+        print "   -r, --rule: section of the param file containing the comparaison rules"
+        print "   -1, --file1: reference file for comparaison"
+        print "   -2, --file1: file compared"
+        sys.exit(2)
+
+
+for opt, a in optlist:
+        if opt in ('-p', '--param'):
+        	res.paramfile_path= a
+        if opt in ('-r', '--rule'):
+        	res.compare_rule=a
+        if opt in ('-1', '--file1'): res.file1_path=a
+        if opt in ('-2', '--file2'): res.file2_path=a
+
+#----------------------------------------------------
+#Ensure valid param file name
+
+res.paramfile_path=os.path.abspath(res.paramfile_path)
+if not os.path.isfile(str(res.paramfile_path)):
+	res.error("Unable to find param file " + res.paramfile_path)
 
 #----------------------------------------------------
 # Read param file
 param = ConfigParser.ConfigParser()
-param.read(param_file)
-if 'GLOBAL' not in param.sections():
-	res.error("Unable to find [GLOBAL] section in param file: '"+param_file+"'")
 
-#Read headers
+param.read(res.paramfile_path)
+if 'GLOBAL' not in param.sections():
+	res.error("Unable to find [GLOBAL] section in param file: '"+res.paramfile_path+"'")
+
+#Read directory aliases DIR1 and DIR2
+if "dir1" in param.options('GLOBAL'):
+	res.dir1=param.get('GLOBAL', 'DIR1')
+if "dir2" in param.options('GLOBAL'):
+	res.dir1=param.get('GLOBAL', 'DIR1')
+
+#Ensure a section exist for the files to be compared
+if res.compare_rule not in param.sections():
+	res.error("Unable to find "+str(res.compare_rule)+" section in param file: '"+res.paramfile_path+"'")
+
+res.file1_path = str.replace((str.replace(param.get(res.compare_rule, "FILE1"), "$DIR1", res.dir1)), "DIR2", res.dir2 )
+res.file1_path = os.path.abspath(os.path.expandvars(res.file1_path))
+res.file2_path = str.replace((str.replace(param.get(res.compare_rule, "FILE2"), "$DIR1", res.dir1)), "DIR2", res.dir2 )
+res.file2_path = os.path.abspath(os.path.expandvars(res.file2_path))
 
 #----------------------------------------------------
 # Check the file dialects
 try:
-	file1Path=param.get('HELLO', 'FILE1')
-	file2Path=param.get('HELLO', 'FILE2')
 
-	file1=open(file1Path, 'rb')
-	file2=open(file2Path, 'rb')
+	file1=open(res.file1_path, 'rb')
+	file2=open(res.file2_path, 'rb')
 
 	dialect1 = csv.Sniffer().sniff(file1.read(5000))
 	dialect2 = csv.Sniffer().sniff(file2.read(5000))
@@ -220,8 +271,8 @@ del failureLogged
 
 #Read the param file
 try:
-	compare_field=[i.strip().lower() for i in param.get(file_mnemo, 'COMPARE_FIELD').split(',')]
-	ignore_field=[i.strip().lower() for i in param.get(file_mnemo, 'IGNORE_FIELD').split(',')]
+	compare_field=[i.strip().lower() for i in param.get(res.compare_rule, 'COMPARE_FIELD').split(',')]
+	ignore_field=[i.strip().lower() for i in param.get(res.compare_rule, 'IGNORE_FIELD').split(',')]
 except Exception as e:
 	res.error(e)
 
@@ -282,7 +333,6 @@ if not failureLogged:
 	res.success("All rows fetched from file2")
 del failureLogged
 
-
 #Retrieve the key for a single input csv record
 def get_key(record):
 	out=[]
@@ -316,7 +366,7 @@ unexpectedFound=[]
 
 #Main loop
 while (cursor1<len(content1) or cursor2<len(content2)):
-
+	#print key1, key2
 
 	#Fetch next file1 record and ensure it is not a duplicate
 	if cursor1<len(content1) and last_cursor1 != cursor1 :
@@ -359,13 +409,19 @@ while (cursor1<len(content1) or cursor2<len(content2)):
 		cursor2+=1
 	#Key 1 not found. Log that and try next record of file1
 	#OR we have reached the last record of file2 and we have to check the remaing file1 record
-	elif key1 < key2 or cursor2==len(content2):
+	if key1 < key2 or cursor2==len(content2):
 		res.failure("Record not found in file2  "+str(zip(compare_field,key1)) ) 
-		cursor1+=1
+		if cursor1 < len(content1):
+			cursor1 += 1
+		else:
+			cursor2 += 1
 	#Same as previous logic, but for the other file
-	elif key1 > key2 or cursor1==len(content1):
+	if key1 > key2 or cursor1==len(content1):
 		unexpectedFound.append("Record not found in file1" + str(zip(compare_field,key2)) )
-		cursor2+=1
+		if cursor2 < len(content2):
+			cursor2 += 1
+		else: 
+			cursor1 += 1
 
 	last_key1=key1[:]
 	last_key2=key2[:]
