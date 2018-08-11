@@ -1,3 +1,4 @@
+#!/usr/bin/python3.4
 #!/usr/bin/python
 ####################################################
 #
@@ -24,12 +25,15 @@
 
 
 
-import csv, io, sys, getopt, copy, ConfigParser, os
+import csv, io, sys, getopt, copy, os
+import configparser
 import traceback
+import json
+
 #from inspect import currentframe, getframeinfo
 
 def trace(message):
-	print message
+	print(message)
 
 ####################################################
 # Returns the list of duplicated values
@@ -53,7 +57,7 @@ class resultClass:
 
 	def __init__(self):
 		self.record=[]
-
+		self.tmpdetail=[]
 		currentdir=os.path.dirname(os.path.abspath(__file__))
 		self.paramfile_path=currentdir+"/kudiff.param"
 		self.dir1=currentdir
@@ -62,41 +66,54 @@ class resultClass:
 		self.file1_path=None
 		self.file2_path=None
 		self.compare_rule=None
-		self.compare_key=None
-		self.compare_ignore=None
+		self.compare_key=[]
+		self.ignore_field=None
 
 	#Add a result at the end of the record[] array
-	#def result(self, status, message, debug=""):
-	#	self.record.append({'status':status, 'message':message, 'debug':[]})
+	#def result(self, status, message, detail=""):
+	#	self.record.append({'status':status, 'message':message, 'detail':[]})
 
 	def success(self, message):
-		self.record.append({'status':'SUCCESS', 'message':message, 'debug':[]})
+		self.record.append({'status':'SUCCESS', 'message':message, 'detail':self.tmpdetail})
+		self.tmpdetail=[]
 	def failure(self, message):
-		self.record.append({'status':'FAILURE', 'message':message, 'debug':[]})
+		self.record.append({'status':'FAILURE', 'message':message, 'detail':self.tmpdetail})
+		self.tmpdetail=[]
 	def warning(self, message):
-		self.record.append({'status':'WARNING', 'message':message, 'debug':[]})
+		self.record.append({'status':'WARNING', 'message':message, 'detail':[]})
+		#self.tmpdetail=[]
 	def error(self, message):
-		self.record.append({'status':'ERROR  ', 'message':message, 'debug':[]})
+		self.record.append({'status':'ERROR  ', 'message':message, 'detail':self.tmpdetail})
+		self.tmpdetail=[]
 		self.bye()
 	def bye(self, return_code=0):
-		print self
+		print(self)
 		sys.exit(return_code)
 
 	def extend(self, resultClass):
 		self.record.extend(copy.deepcopy(resultClass.record))
 
 	#Add a warning on the last result created
-	def debug(self, debug):
-		self.record[-1]['debug'].append(debug)
+	def detail(self, detail):
+		self.record[-1]['detail'].append(detail)
+
+	def preparedetail(self, detail):
+		self.tmpdetail.append(detail)
 
 	#Pretty print of the resultClass
 	def __str__(self):
+
+		print("DEBUG   - " + self.compare_rule + " - file1_path = " + self.file1_path)
+		print("DEBUG   - " + self.compare_rule + " - file2_path = " + self.file2_path)
+		print("DEBUG   - " + self.compare_rule + " - compare_key = " + str(set(list(zip(*self.compare_key))[1] )) )
+		print("DEBUG   - " + self.compare_rule + " - ignore_field = ", str(set(self.ignore_field)))
+
 		res=""
 		for data in self.record:
 			if res != "": res+="\n"
-			res += str(data['status']) + " - " + str(data['message'])
-			for w in data['debug']:
-				res += "\n  DEBUG - "+str(w)
+			res += str(data['status']) + " - " + self.compare_rule + " - " + str(data['message'])
+			for w in data['detail']:
+				res += "\n "+data['status']+"_detail - "+ self.compare_rule + " - " +str(w)
 		return res
 
 	#print override for python prompt
@@ -113,8 +130,8 @@ class resultClass:
  #
  #	if len(duplicate1) != 00 or len(duplicate2) != 00:
  #		res.failure("Duplicates found")
- #		res.debug( "Header1: " + str(duplicate1) )
- #		res.debug( "Header2: " + str(duplicate2) )
+ #		res.detail( "Header1: " + str(duplicate1) )
+ #		res.detail( "Header2: " + str(duplicate2) )
  #	else:
  #		res.success("No duplicate found")
  #	return res
@@ -134,11 +151,11 @@ try:
         optlist, args = getopt.getopt(sys.argv[1:], 'p:r:1:2:', ['param=', 'rule=', 'file1=', 'file2=', 'separator='])
         if(len(sys.argv)==1):   raise ValueError('No argument')
 except:
-        print " Usage: " + sys.argv[0] +" [OPTIONS]"
-        print "   -p, --param: param file location"
-        print "   -r, --rule: section of the param file containing the comparaison rules"
-        print "   -1, --file1: reference file for comparaison"
-        print "   -2, --file1: file compared"
+        print(" Usage: " + sys.argv[0] +" [OPTIONS]")
+        print("   -p, --param: param file location")
+        print("   -r, --rule: section of the param file containing the comparaison rules")
+        print("   -1, --file1: reference file for comparaison")
+        print("   -2, --file1: file compared")
         sys.exit(2)
 
 
@@ -159,7 +176,7 @@ if not os.path.isfile(str(res.paramfile_path)):
 
 #----------------------------------------------------
 # Read param file
-param = ConfigParser.ConfigParser()
+param = configparser.ConfigParser()
 
 param.read(res.paramfile_path)
 if 'GLOBAL' not in param.sections():
@@ -184,20 +201,31 @@ res.file2_path = os.path.abspath(os.path.expandvars(res.file2_path))
 # Check the file dialects
 try:
 
-	file1=open(res.file1_path, 'rb')
-	file2=open(res.file2_path, 'rb')
-
-	dialect1 = csv.Sniffer().sniff(file1.read(5000))
-	dialect2 = csv.Sniffer().sniff(file2.read(5000))
-
+	file1=open(res.file1_path, 'r')
+	file2=open(res.file2_path, 'r')
+	dialect1 = csv.Sniffer().sniff(file1.read(2000))
+	dialect2 = csv.Sniffer().sniff(file2.read(2000))
 	file1.seek(0)
 	file2.seek(0)
+except:
+	del(file1)
+	del(file2)
 
+	try:
+		file1=open(res.file1_path, 'r')
+		file2=open(res.file2_path, 'r')
+		dialect1 = csv.Sniffer().sniff(file1.read(50))
+		dialect2 = csv.Sniffer().sniff(file2.read(50))
+		file1.seek(0)
+		file2.seek(0)
+	except Exception as e:
+		res.error("Unable to open the csv files "+ str(e))
+
+try:
 	csv1=csv.reader(file1, dialect1)
 	csv2=csv.reader(file2, dialect2)
-
 except Exception as e:
-	res.error("Unable to open files to compare. "+ str(e))
+	res.error("Unable to read csv files "+ str(e))
 
 #----------------------------------------------------
 # Manage missmatching dialects
@@ -221,18 +249,12 @@ dialect2_values={'dialect':str(dialect2),
 	'skipinitialspace':str(dialect2.skipinitialspace)
 }
 
-failureLogged=False
+checkFailed=False
 for key in dialect1_values:
 	if dialect1_values[key] !=  dialect2_values[key]:
-		if(not failureLogged):
-			failureLogged=True
-			res.failure("CSV dialect (format) missmatch")
-		res.debug(str(key) + " is '"+str( dialect1_values[key])
+		checkFailed=True
+		res.preparedetail("CSV dialect missmatch. " + str(key) + " is '"+str( dialect1_values[key])
 		+ "' in file1 but '"+str( dialect2_values[key])+"' in file2")
-
-if not failureLogged:
-	res.success("CSV dialect (format) match")
-del failureLogged
 
 #----------------------------------------------------
 # Manage header logic
@@ -248,31 +270,30 @@ for header2 in csv2:
 if len(get_duplicate(header1)): res.error("Header 1 has duplicated fields: "+ str(get_duplicate(header1)))
 if len(get_duplicate(header2)):	res.error("Header 2 has duplicated fields: "+ str(get_duplicate(header1)))
 
-failureLogged=False
+
 if header1 == header2:
 	res.success("Header2 match")
 elif header1[:len(header1)] == header2[:len(header1)]:
 	res.warning("Header2 match with additional fields")
-	res.debug("Additional fields: "+str(list(set(header2)-set(header1))))
+	res.detail("Additional fields: "+str(list(set(header2)-set(header1))))
 elif len(set(header1) - set(header2))==0:
-	failureLogged=True
+	checkFailed=True
 	res.failure("Header2 order missmatch")
-	res.debug("Header 1: "+ str(header1))
-	res.debug("Header 2: "+ str(header2))
+	res.detail("Header 1: "+ str(header1))
+	res.detail("Header 2: "+ str(header2))
 else:
-	failureLogged=True
+	checkFailed=True
 	res.failure("Header2 field name missmatch")
-	res.debug("Missing in header2:" + str(list(set(header1)-set(header2))))
-	res.debug("Missing in header1:" + str(list(set(header2)-set(header1))))
+	res.detail("Missing in header2:" + str(list(set(header1)-set(header2))))
+	res.detail("Missing in header1:" + str(list(set(header2)-set(header1))))
 
-if failureLogged:
+if checkFailed:
 	res.error("Wrong headers, unable to continue")
-del failureLogged
 
 #Read the param file
 try:
 	compare_field=[i.strip().lower() for i in param.get(res.compare_rule, 'COMPARE_FIELD').split(',')]
-	ignore_field=[i.strip().lower() for i in param.get(res.compare_rule, 'IGNORE_FIELD').split(',')]
+	res.ignore_field=[i.strip().lower() for i in param.get(res.compare_rule, 'IGNORE_FIELD').split(',')]
 except Exception as e:
 	res.error(e)
 
@@ -285,10 +306,14 @@ if len(set(compare_field) - set(header1)) != 0:	res.error("Key fields are missin
 if len(set(compare_field) - set(header2)) != 0:	res.error("Key fields are missing in header2: "+str(list(set(compare_field) - set(header2))))
 
 #Store both field number and field name in the compare_key variable
-compare_id=[header1.index(fieldName) for fieldName in compare_field]
-compare_key=zip(compare_id, header1)
+res.compare_id=[header1.index(fieldName) for fieldName in compare_field]
+#res.compare_key=list(zip(res.compare_id, header1))
+i=0
+for i in range(0,len(compare_field)):
+	res.compare_key.append((res.compare_id[i], compare_field[i]))
+
 #Number of fields required to be able to retrive the compare key
-required_fieldcount=max(compare_id)+1
+required_fieldcount=max(res.compare_id)+1
 
 
 #Fetch fields from files
@@ -298,7 +323,6 @@ content2=[]
 
 
 #Read all rows and ensure they contains the compare key
-failureLogged=False
 for record1 in csv1:
 	if len(record1)>=required_fieldcount:
 		content1.append(record1)
@@ -306,17 +330,10 @@ for record1 in csv1:
 		#Ignore blank line
 		if len(record1)==0: continue
 		#Log error
-		if(not failureLogged):
-			failureLogged=True
-			res.failure("Unable to fetch all rows from file1")
-		res.debug("line " + str(csv1.line_num) + ": " + str(record1))
-
-if not failureLogged:
-	res.success("All rows fetched from file1")
-del failureLogged
+		checkFailed=True
+		res.preparedetail("File1, Missing compare key for " + str(csv1.line_num) + ": " + str(record1))
 
 #Read all rows and ensure they contains the compare key
-failureLogged=False
 for record2 in csv2:
 	if len(record2)>=required_fieldcount:
 		content2.append(record2)
@@ -324,128 +341,125 @@ for record2 in csv2:
 		#Ignore blank line
 		if len(record2)==0: continue
 		#Log error
-		if(not failureLogged):
-			failureLogged=True
-			res.failure("Unable to fetch all rows from file2")
-		res.debug("line " + str(csv2.line_num) + ": " + str(record2))
+		checkFailed=True
+		res.preparedetail("File2, Missing compare key for " + str(csv2.line_num) + ": " + str(record2))
 
-if not failureLogged:
-	res.success("All rows fetched from file2")
-del failureLogged
+if checkFailed:
+	res.failure("File format missmatch")
+else:
+	res.success("File format match")
+del checkFailed
+checkFailed=False
 
 #Retrieve the key for a single input csv record
-def get_key(record):
-	out=[]
-	#Dirty access to compare_key defined outside the function scope
-	for id, name in compare_key:
-		out.append(record[id])
-	return out
+def get_key(record, prettyPrint=False):
+
+	if not prettyPrint:
+		out=[]
+		#Dirty access to compare_key defined outside the function scope
+		for id, name in res.compare_key:
+			out.append(record[id])
+		return out
+	else:
+		out={}
+		#Dirty access to compare_key defined outside the function scope
+		for id, name in res.compare_key:
+			out[name]=record[id]
+		return str(out)
 
 #sort the content of my files
 content1.sort(key=get_key)
 content2.sort(key=get_key)
 
-##----------------------------------------------------
-#Loop on file1 and file2
 
-#Variables required for the loop
-last_cursor1=-1
-last_cursor2=-1
-cursor1=0
-cursor2=0
-last_key1=[]
-key1=[]
-last_key2=[]
-key2=[]
+
+#----------------------------------------------------
+#Remove duplicate in file 1
+
 i=0
-
-#Variable to store results for later
-duplicateFound=[]
-unexpectedFound=[]
-
-
-#Main loop
-while (cursor1<len(content1) or cursor2<len(content2)):
-	#print key1, key2
-
-	#Fetch next file1 record and ensure it is not a duplicate
-	if cursor1<len(content1) and last_cursor1 != cursor1 :
-		key1=get_key(content1[cursor1])
-		if last_key1 == key1:
-			duplicateFound.append("Skipping duplicate in file1"+str(zip(compare_field,key1)))
-			cursor1+=1
-			continue
-
-	#Fetch next file2 record and ensure it is not a duplicate
-	if cursor2<len(content2) and last_cursor2 != cursor2:
-		key2=get_key(content2[cursor2])
-		if last_key2 == key2:
-			duplicateFound.append("Skipping duplicate in file2"+str(zip(compare_field,key2))  )
-			cursor2+=1
-			continue
-
-	#Store cursor position to identify moves
-	last_cursor1=cursor1
-	last_cursor2=cursor2
-
-	#When the keys are matching, process the comparaison
-	if key1 == key2:
-		fieldNum=0
-		missmatchingField=[]
-		for field in content1[cursor1]:
-			if header1[fieldNum] not in ignore_field:
-				if field != content2[cursor2][fieldNum]:
-					missmatchingField.append( str(header1[fieldNum]) + ": expecting '"+str(field) +"' instead of '"+ str(content2[cursor2][fieldNum]) +"'") 
-			fieldNum+=1
-		if missmatchingField==[]:
-			res.success("Record match"+str(zip(compare_field,key1)) )
-		else:
-			res.failure("Record missmatch"+str(zip(compare_field,key1)) )
-			for debugMessage in missmatchingField:
-				res.debug(debugMessage)
-
-		del missmatchingField
-		cursor1+=1
-		cursor2+=1
-	#Key 1 not found. Log that and try next record of file1
-	#OR we have reached the last record of file2 and we have to check the remaing file1 record
-	if key1 < key2 or cursor2==len(content2):
-		res.failure("Record not found in file2  "+str(zip(compare_field,key1)) ) 
-		if cursor1 < len(content1):
-			cursor1 += 1
-		else:
-			cursor2 += 1
-	#Same as previous logic, but for the other file
-	if key1 > key2 or cursor1==len(content1):
-		unexpectedFound.append("Record not found in file1" + str(zip(compare_field,key2)) )
-		if cursor2 < len(content2):
-			cursor2 += 1
-		else: 
-			cursor1 += 1
-
-	last_key1=key1[:]
-	last_key2=key2[:]
-
-	#Dummy logics to avoid infinite loop
-	i+=1
-	#if i>5:break
-	#if i> len(content1) + len(content2) +10:
-	#break
+while len(content1) > i+1:
+	if get_key(content1[i]) == get_key(content1[i+1]):
+		checkFailed=True
+		res.preparedetail("File 1 duplicate skipped "+get_key(content1[i], True))
+		del(content1[i])
+		i=i-1
+	i=i+1
 
 
+#----------------------------------------------------
+#Remove duplicate in file 2
 
+i=0
+while len(content2) > i+1:
+	if get_key(content2[i]) == get_key(content2[i+1]):
+		checkFailed=True
+		res.preparedetail("File 2 duplicate skipped "+get_key(content2[i], True))
+		del(content2[i])
+		i=i-1
+	i=i+1
 
-#Duplicate status
-if duplicateFound == [] and  unexpectedFound == []:
-	res.success("No unexpected record found")
+if checkFailed:
+	res.failure("Duplicate records found")
 else:
-	res.failure("Unexpected records ")
-	for i in duplicateFound:
-		res.debug(i)
-	for i in unexpectedFound:
-		res.debug(i)
+	res.success("No duplicate records in file")
 
 
-del cursor2, duplicateFound
+unexpected=[]
+#----------------------------------------------------
+#Loop on file1
+while len(content1) > 0 and len(content2) > 0 :
+	key1=get_key(content1[0])
+	key2=get_key(content2[0])
+	if key1 < key2:
+		res.failure("missing record in file2" + get_key(content1[0], True))
+		del content1[0]
+	elif key1 > key2:
+		unexpected.append(get_key(content1[0], True))
+		del content2[0]
+	else:
+		#Process the field comparaison
+		fieldNum=0
+		checkFailed=False
+		for field in content1[0]:
+			if header1[fieldNum] not in res.ignore_field:
+				if field != content2[0][fieldNum]:
+					checkFailed=True
+					res.preparedetail( "File 1 {'" + str(header1[fieldNum]) +"': " + str(field) +"}" )
+					res.preparedetail( "File 2 {'"+ str(header1[fieldNum])  +"': " + str(content2[0][fieldNum])+"}" )
+			fieldNum+=1
+		if checkFailed:
+			res.failure("Missmatching values " + get_key(content1[0], True))
+		else:
+			res.success("Record values match " + get_key(content1[0], True) )
+		del checkFailed
+
+		del content1[0]
+		del content2[0]
+
+print(len(content1), len(content2))
+
+checkFailed=False
+#----------------------------------------------------
+#Trailing missing records from file1
+for record in content1:
+	checkFailed=True
+	res.preparedetail("File1 record missing in file2: " + get_key(record, True))
+
+#----------------------------------------------------
+#Trailing unexpected records in file2
+for record in content2:
+	checkFailed=True
+	unexpected.append(get_key(record))
+if unexpected != []:
+	checkFailed=True
+	for detail in unexpected:
+		res.preparedetail("Unexpected file 2 record: " + str(detail))
+
+
+if checkFailed:
+	res.failure("Record list missmatch")
+else:
+	res.success("Record list match")
+
 
 res.bye()
