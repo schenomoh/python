@@ -1,0 +1,138 @@
+#!/usr/bin/python3.4
+#!/home/m2rdev31/anaconda3/bin/python
+#
+# Convert a XML in JSON
+# Please note some xml metadata (encoding, default namespace, ..) will not be stored
+#
+# Example of script usage:
+# ./xml2json.py --ordertag --namespace myfile.xml
+#
+#
+# Example of library usage:
+# import xml2json
+# xml2json.parse('myfile.xml')
+#
+
+import xml.etree.ElementTree as ET
+import json
+import sys, getopt
+
+#---------------------------------------
+# Parse the argument XML file and return a json
+#
+def parse(filename, orderTag=False, namespace=False):
+  tree2 = ET.parse(filename)
+  root = tree2.getroot()
+  return(xml2json(root, orderTag=orderTag, namespace=namespace))
+
+#---------------------------------------
+# Read the argument string, parse it as XML, and return a json
+#
+def fromstring(stringdata, orderTag=False, namespace=False): 
+  root = ET.fromstring(stringdata)
+  #root = tree2.getroot()
+  return(xml2json(root, orderTag=orderTag, namespace=namespace))
+
+#---------------------------------------
+# Get tag name from an element without namespace
+# To list all the namespaces, use the below command:
+#  namespace=dict([ node for (_, node) in ET.iterparse(xmlfile, events=['start-ns']) ])
+#
+def _getTagName( element, namespace=False ):
+  if namespace:
+    return element.tag
+  else:
+    return element.tag.split('}')[-1]
+
+
+
+
+#---------------------------------------
+#Convert a xml.etree element to json
+#
+def xml2json( xml, rootElement=True, orderTag=False, namespace=False ):
+  
+  #Check if xml has duplicated nodes/markups
+  if len(xml) ==  len(set([xml.tag for xml in xml])):
+    has_duplicate=False
+  else:
+    has_duplicate=True
+
+  #If there is duplicated tag, then store in an array
+  if has_duplicate or orderTag:
+    tmp=[]
+    for child in xml:
+      if len(child) == 0 and len(child.attrib) == 0:
+        #Single markup value, no attribute
+        tmp.append(   { _getTagName(child, namespace) : child.text }   )
+      elif len(child) == 0 and len(child.attrib) != 0:
+        #Single markup value, some attribute
+        tmp.append(   { _getTagName(child, namespace) : [{'@'+key:val for key, val  in child.attrib.items()}, child.text] }   )
+      elif len(child) != 0 and len(child.attrib) == 0:
+        #Multiple markup value, no attribute
+        tmp.append(   { _getTagName(child, namespace) : xml2json(child, False, orderTag, namespace) }   )
+      elif len(child) != 0 and len(child.attrib) != 0:
+        tmp.append(   { _getTagName(child, namespace) : [{'@'+key:val for key, val  in child.attrib.items()}, xml2json(child, False, orderTag, namespace)] }   )
+ 
+  #If there is no duplicated tag, then a dictionnary is enough (no need of an array)
+  else:
+    tmp={}
+    for child in xml:
+      if len(child) == 0 and len(child.attrib) == 0:
+        #Single markup value, no attribute
+        tmp[_getTagName(child, namespace)] = child.text
+      elif len(child) == 0 and len(child.attrib) != 0:
+        #Single markup value, some attribute 
+        tmp[_getTagName(child, namespace)] = [{'@'+key:val for key, val  in child.attrib.items()}, child.text]
+      elif len(child) != 0 and len(child.attrib) == 0:
+        #Multiple markup value, no attribute
+        tmp[ _getTagName(child, namespace) ]=xml2json(child, False, orderTag, namespace)
+      elif len(child) != 0 and len(child.attrib) != 0:
+        tmp[ _getTagName(child, namespace) ]= [ {'@'+key:val for key, val in child.attrib.items()}, xml2json(child, False, orderTag, namespace) ]
+ 
+  if rootElement:
+    return json.dumps({_getTagName(xml, namespace):tmp})
+
+  return tmp
+
+
+#----------------------------------
+# This code runs only when we call the script directly
+# It does not run when we import it
+if __name__ == '__main__':
+  try:
+    optlist, args = getopt.getopt(sys.argv[1:], 'on', ['ordertag', 'namespace'])
+    if( len(sys.argv) < 2 ):   raise ValueError('Need at least one argument')
+  except:
+    print( " Usage: " + sys.argv[0] +" [OPTIONS] .. [XMLFILE]")
+    print( "   -o, --ordertag: keep the xml tag order in the output json")
+    print( "   -n, --namespace: prefix fields with namespace when explicitely found in xml")
+    sys.exit(2)
+
+
+  orderTag=False
+  namespace=False
+  for opt, a in optlist:
+    if opt in ('-o', '--ordertag'):
+      orderTag=True
+    if opt in ('-n', '--namespace'):
+      namespace=True
+
+  filename=sys.argv[-1]
+
+
+  #-----------------------------------
+  # Main
+  try:
+    tree2 = ET.parse(filename)
+    root = tree2.getroot()
+    print(xml2json(root, orderTag=orderTag, namespace=namespace))
+  except Exception as e:
+    print(  "Unable to process '" + filename + "', " +str(sys.exc_info()[0]).split("'")[1] +", " + str(e) )
+    #print(sys.exc_info())
+    sys.exit(1)
+
+  sys.exit(0)
+
+
+
