@@ -14,7 +14,7 @@ from subprocess import Popen, PIPE, STDOUT as subprocess
 from fcntl import fcntl, F_GETFL, F_SETFL
 
 #Call the tail -F Unix shell command within a subprocess called "sub"
-sub=Popen("tail -F toto", 
+sub=Popen("exec tail -F toto", 
 	shell=True, 
 	stdout=PIPE, stderr=PIPE)
 
@@ -35,3 +35,8 @@ while True:
 		print('stdout', line, end="")
 	if len(error) != 0:
 		print('stderr', error, end="")
+
+#	if line[:4]=="stop":
+#		print("stop detected")
+#		sub.kill()
+#		break
