@@ -4,12 +4,12 @@
 # Use yield/generator to (hopefully) handle big files
 # 
 # Does not handle sting encoding properly (accents & all)
-
+#
+# Test command
+# ./csv2json.py ../training/res/media_library.csv
+#
 
 import json, csv, sys
-
-filepath='/home/pryb/APR/python/dev/media_library.csv'
-
 
 def csv2json(filepath):
 	result={'header':None, 'content':[]}
