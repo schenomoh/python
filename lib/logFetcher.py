@@ -73,7 +73,7 @@ class logfetcher(object):
 		linuxDatetime = datetime.strptime(linuxDatetime[:26], '%Y-%m-%d %H:%M:%S.%f')
 		#Linux ls to retrieve all files matching pattern
 		linux_listfile=check_output(
-				['ls -lt --time-style="+%Y-%m-%d %H:%M:%S.%N" ' + self.filepattern + ' 2>/dev/null || echo -n ""']
+				['ls -lt --time-style="+%Y-%m-%d %H:%M:%S.%N" ' + self.filelocation + '/' + self.filepattern + ' 2>/dev/null || echo -n ""']
 				, shell=True
 				#, stderr=PIPE #We are adviced to avoid using this parameter for check_output(). So, errors are managed in Linux shell command
 			).decode('UTF-8').split('\n')
@@ -218,7 +218,7 @@ class logfetcher(object):
 '''
 if __name__ == '__main__':
 
-	f = logfetcher('./feedback*', max_ageofrecord=30)
+	f = logfetcher('../training/res/feedback*', max_ageofrecord=30)
 
 	f.start('undefined')
 
