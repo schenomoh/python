@@ -138,10 +138,10 @@ class logfetcher(object):
 				line=self.poller.stdout.readline().decode('UTF-8')
 				if len(line) == 0: break
 				self.data.append(line)
-			while True:
-				error=self.poller.stderr.readline().decode('UTF-8')
-				#Todo, generate some logs on error ? 
-				if len(error) == 0: break
+			#while True:
+			#	error=self.poller.stderr.readline().decode('UTF-8')
+			#	#Todo, generate some logs on error ? 
+			#	if len(error) == 0: break
 		except:
 			pass
 		finally:
@@ -180,10 +180,11 @@ class logfetcher(object):
 		if filename==None: filename=self.filename
 
 		#Start the poller by invoking a tail -F command 
-		self.poller=Popen("exec tail -F "+filename + "", shell=True, stdout=PIPE, stderr=PIPE)
+		#self.poller=Popen("exec tail -F "+filename + "", shell=True, stdout=PIPE, stderr=PIPE)
+		self.poller=Popen("exec tail -F "+filename + " 2>/dev/null", shell=True, stdout=PIPE)
 		# Add O_NONBLOCK flag to prevent file reader to wait for EOL
 		fcntl(self.poller.stdout, F_SETFL, fcntl(self.poller.stdout, F_GETFL) | os.O_NONBLOCK)
-		fcntl(self.poller.stderr, F_SETFL, fcntl(self.poller.stderr, F_GETFL) | os.O_NONBLOCK)
+		#fcntl(self.poller.stderr, F_SETFL, fcntl(self.poller.stderr, F_GETFL) | os.O_NONBLOCK)
 
 	
 	''' ----------------------------------------- 
@@ -209,6 +210,7 @@ class logfetcher(object):
 		Called when exiting from a with statement
 	'''
 	def __exit__(self):
+		print("stopping")
 		self.stop()
 
 #output, error_output = sub.communicate()
