@@ -34,7 +34,7 @@ class psFetcher:
 		self.current={}
 
 		#Retrieve all the processes, trim all fields and returns only records older than 0 second
-		psCommand=Popen("ps -ed --no-headers -o etimes,ruser,pid,ppid,command -ww|awk '{$1=$1}1' | grep -v ^0' '", shell=True, stdout=PIPE)
+		psCommand=Popen("ps -ed --no-headers -o etime,ruser,pid,ppid,command -ww|awk '{$1=$1}1' | grep -v ^0' '", shell=True, stdout=PIPE)
 		while True:
 			psOutput = psCommand.stdout.readline().decode('UTF-8')[:-1]
 			if len(psOutput) == 0: break
@@ -42,7 +42,10 @@ class psFetcher:
 			psOutput=psOutput.split(' ')
 			line={}
 			#Fetch fields returned by ps
-			line["elapsedSecond"]=psOutput.pop(0)
+			t=psOutput.pop(0)
+			t=t.replace('-',':').split(':')
+			t=[0]*(4-len(t))+[int(i) for i in t]
+			line["elapsedSecond"] = t[0]*86400+t[1]*3600+t[2]*60+t[3]
 			line["user"]=psOutput.pop(0)
 			line["pid"]=psOutput.pop(0)
 			line["ppid"]=psOutput.pop(0)
