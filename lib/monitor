@@ -1,0 +1,38 @@
+#!/usr/bin/python3.4
+
+from logFetcher import *
+import os, time, datetime
+
+
+
+start_time = datetime.datetime.now()
+print ("Started at",start_time)
+
+try:
+	feedback = logfetcher('./feedback*')
+	feedback.start('undefined')
+
+	report = logfetcher('./report*')
+	report.start('undefined')
+
+
+	while True:
+		for line in feedback.read():
+			print(feedback.filename, line, end="")
+
+		for line in report.read():
+			print(report.filename, line, end="")
+
+		time.sleep(0.1)
+
+except Exception as e: print(e, sys.exc_info())
+finally:
+	
+	feedback.stop()
+	report.stop()
+
+	end_time = datetime.datetime.now()
+	print ("\nStopped at",end_time)
+	print ("Run duration is", (end_time - start_time).total_seconds(),"seconds"  )
+
+	quit()

@@ -1,0 +1,19 @@
+
+#!/home/m2rdev31/anaconda3/bin/python
+from lxml import etree
+
+filename='ws_gateway.wsdl'
+tree = etree.parse(filename)
+root = tree.getroot()
+
+namespace_list = {'wsdl':'http://schemas.xmlsoap.org/wsdl/'}
+
+messagename = tree.xpath('//wsdl:portType/wsdl:operation/wsdl:input/@message', namespaces=namespace_list )[0]
+messagename = {'ns':messagename.split(':')[0], 'value':messagename.split(':')[1]}
+print ('messagename:', messagename)
+
+
+elementname =  tree.xpath('//wsdl:message[@name="' + messagename['value'] + '"]/wsdl:part/@element', namespaces=namespace_list)[0]
+
+print(elementname)
+

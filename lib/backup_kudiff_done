@@ -1,0 +1,207 @@
+ #!/usr/bin/python3.4
+
+import csv, io, sys, getopt, copy, os
+import configparser
+import json
+
+def trace(message):
+	print(message)
+
+####################################################
+# Returns the list of duplicated values
+#
+def get_duplicate(list):
+	found=[]
+	duplicate=[]
+	for key in list:
+		#If we discover a new value, put it in "found"
+		#If the value was already found, it is a duplicate
+		if key not in found:
+			found.append(key)
+		else:
+			duplicate.append(key)
+	return duplicate
+
+####################################################
+# Class to store the result
+#
+class kudiff:
+
+	def __init__(self, 
+				defaultdir=os.getcwd(), 
+				paramfile_name="kudiff.param",
+				file1_defaultdir=None,
+				file2_defaultdir=None,
+				compare_rule=None,
+				file1_name=None,
+				file2_name=None
+				):
+		self.record=[]
+		self.tmpdetail=[]
+		self.defaultdir = defaultdir
+		self.paramfile_name = paramfile_name
+
+		self.file1_defaultdir = file1_defaultdir
+		self.file2_defaultdir = file2_defaultdir
+
+		self.file1_name=file1_name
+		self.file2_name=file2_name
+
+		self.file1_name_init=file1_name
+		self.file2_name_init=file2_name
+		
+		self.compare_rule=compare_rule
+		self.compare_key=[]
+		self.ignore_field=None
+
+	#Add a result at the end of the record[] array
+	#def result(self, status, message, detail=""):
+	#	self.record.append({'status':status, 'message':message, 'detail':[]})
+
+	def success(self, message):
+		self.record.append({'status':'SUCCESS', 'message':message, 'detail':self.tmpdetail})
+		self.tmpdetail=[]
+	def failure(self, message):
+		self.record.append({'status':'FAILURE', 'message':message, 'detail':self.tmpdetail})
+		self.tmpdetail=[]
+	def warning(self, message):
+		self.record.append({'status':'WARNING', 'message':message, 'detail':[]})
+		#self.tmpdetail=[]
+	def error(self, message):
+		self.record.append({'status':'ERROR  ', 'message':message, 'detail':self.tmpdetail})
+		self.tmpdetail=[]
+		self.bye()
+	def bye(self, return_code=0):
+		print(self)
+		sys.exit(return_code)
+
+	#Add a warning on the last result created
+	def detail(self, detail):
+		self.record[-1]['detail'].append(detail)
+
+	def preparedetail(self, detail):
+		self.tmpdetail.append(detail)
+
+	#Pretty print of the kudiff
+	def __str__(self):
+
+		print("DEBUG   -", self.compare_rule, "- defaultdir =",  self.defaultdir)
+		print("DEBUG   -", self.compare_rule, "- file1_defaultdir =",  self.file1_defaultdir)
+		print("DEBUG   -", self.compare_rule, "- file2_defaultdir =",  self.file2_defaultdir)
+		print("DEBUG   -", self.compare_rule, "- file1_name =",  self.file1_name)
+		print("DEBUG   -", self.compare_rule, "- file2_name =",  self.file2_name)
+		print("DEBUG   -", self.compare_rule, "- paramfile_name =",  self.paramfile_name)
+		if self.compare_key != []:
+			print("DEBUG   -", self.compare_rule, "- compare_key =",  str(set(list(zip(*self.compare_key))[1] )) )
+		else:
+			print("DEBUG   -", self.compare_rule, "- compare_key =", None)
+		if self.ignore_field != None:
+			print("DEBUG   -", self.compare_rule, "- ignore_field =", str(set(self.ignore_field)))
+
+		res=""
+		for data in self.record:
+			if res != "": res+="\n"
+			res += str(data['status']) + " - " + str(self.compare_rule) + " - " + str(data['message'])
+			for w in data['detail']:
+				res += "\n "+data['status']+"_detail - "+ str(self.compare_rule) + " - " +str(w)
+		return res
+
+	#print override for python prompt
+	def __repr__(self):
+		return __str__(self)
+
+
+	def read_param(self):
+		#Check param file exist
+
+		self.paramfile_name = self.clean_path(self.paramfile_name, self.defaultdir)
+
+		if not os.path.isfile(self.paramfile_name):
+			self.error("Unable to find param file '" + str(self.paramfile_name)+"'")
+
+		#Open param file
+		param = configparser.ConfigParser()
+		param.read(self.paramfile_name)
+
+		if 'GLOBAL' not in param.sections():
+			self.error("Unable to find [GLOBAL] section in param file: '"+self.paramfile_name+"'")
+
+		#Get file1 default directory
+		if "FILE1_DEFAULTDIR".lower() in param.options('GLOBAL'):
+			mydir = param.get('GLOBAL', 'FILE1_DEFAULTDIR')
+		else:
+			mydir = '.'
+		self.file1_defaultdir=self.clean_path(mydir, self.defaultdir)
+
+		#Get file2 default directory
+		if "FILE2_DEFAULTDIR".lower() in param.options('GLOBAL'):
+			mydir = param.get('GLOBAL', 'FILE2_DEFAULTDIR')
+		else:
+			mydir = '.'
+		self.file2_defaultdir=self.clean_path(mydir, self.defaultdir)
+
+		#Ensure a section exists for the files to be compared
+		if self.compare_rule not in param.sections():
+			self.error("Unable to find ["+str(self.compare_rule)+"] section in param file: '"+self.paramfile_name+"'")
+
+		#------------- Manage FILE1 -------------
+		#If no FILE1_NAME, retrieve FILE1_NAME from param file
+		if self.file1_name == None and "FILE1_NAME".lower() in param.options(self.compare_rule):
+			self.file1_name = self.clean_path( param.get(self.compare_rule, "FILE1_NAME"), self.file1_defaultdir)
+
+		#If still no FILE1_NAME, raise a warning 
+		if self.file1_name == None:
+			self.error("FILE1_NAME is not defined in '" + self.paramfile_name +"'")
+		else:
+		#Get file1_name full clean path
+			self.file1_name = self.clean_path(self.file1_name, self.file1_defaultdir)
+
+		#------------- Manage FILE2 -------------
+		#If no FILE2_NAME, retrieve FILE2_NAME from param file
+		if self.file2_name == None and "FILE2_NAME".lower() in param.options(self.compare_rule):
+			self.file2_name = self.clean_path( param.get(self.compare_rule, "FILE2_NAME"), self.file1_defaultdir)
+
+		#If still no FILE2_NAME, raise an exception
+		if self.file2_name == None:
+			self.error("FILE2_NAME is not defined in '" + self.paramfile_name +"'")
+		else:
+		#Get file2_name full clean path
+			self.file2_name = self.clean_path(self.file2_name, self.file1_defaultdir)
+
+
+		#Ensure the file exists
+		if not os.path.isfile(self.file1_name):
+			self.error("Unable to find FILE1_NAME '" + str(self.file1_name)+"'")
+		
+
+		#Ensure the file exists
+		if not os.path.isfile(self.file2_name):
+			self.error("Unable to find FILE2_NAME '" + str(self.file2_name)+"'")
+		
+
+		return
+
+	def clean_path(self, mypath, defaultdir=None):
+		
+		#file1_name
+		if defaultdir == None: 
+			defaultdir == self.defaultdir
+		mypath = os.path.expandvars(mypath)
+		if mypath[0] != '/':
+			mypath = os.path.abspath( defaultdir +'/' + mypath )
+		else:
+			mypath = os.path.abspath(mypath)
+
+		return mypath
+
+
+#################################################"
+def _usage(errorMessage=None):
+	print(" Usage: " + sys.argv[0] +" [OPTIONS]")
+	print("   -p, --param: param file location")
+	print("   -r, --rule: section of the param file containing the comparaison rules")
+	print("   -1, --FILE1_NAME: reference file for comparaison")
+	print("   -2, --FILE1_NAME: file compared")
+	if errorMessage != None:
+		print("\n", errorMessage)
+	sys.exit(2)
