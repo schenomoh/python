@@ -512,7 +512,7 @@ if __name__ == '__main__':
 			res.failure("missing record in file2" + res.get_key(content1[0], True))
 			del content1[0]
 		elif key1 > key2:
-			unexpected.append(res.get_key(content1[0], True))
+			unexpected.append(res.get_key(content2[0], True))
 			del content2[0]
 		else:
 			#Process the field comparaison
