@@ -131,7 +131,7 @@ class kuresult:
 				else: val2 = ''
 
 				expected = [ "File 1 [{}] = '{}' at line {}".format( record['fieldname'], val1, record['file1_line'] ) ] 
-				output.append(';'.join(tmp + expected) )
+				output.append(delimiter.join(tmp + expected) )
 				tmp += [ "File 2 [{}] = '{}' at line {}".format( record['fieldname'], val2, record['file2_line'] ) ]
 
 			output.append(delimiter.join(tmp) )
