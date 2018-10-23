@@ -77,7 +77,7 @@ class kuresult:
 
 	def success(self, group, **arg): self.store_result(status='SUCCESS', group=group, **arg)
 	def failure(self, group, message=None, **arg): self.store_result(status='FAILURE', group=group, message=message, **arg)
-	def warning(self, group, message=None, **arg): self.store_result(status='WARNING', group=group, message=message, **arg)
+	def debug(self, group, message=None, **arg): self.store_result(status='DEBUG', group=group, message=message, **arg)
 	def error  (self, group, message=None, **arg): 
 		self.store_result(status='ERROR', group=group, message=message, **arg)
 		print(self)
@@ -112,28 +112,34 @@ class kuresult:
 		#Basic output: pseudo array
 		if format=="OBJECT" : return '[\n' + ',\n'.join([ str(i) for i in self.result ] ) + '\n]'
 
-
-		display_list = ['file1_value' ,'file2_value']
 		output=[]
+		#Debug data
+		output.append( delimiter.join([ self.compare_rule, 'DEBUG  ', 'INIT', '(INIT)',  "$paramfile_name = '"+self.paramfile_name+"'" ])  ) 
+		output.append( delimiter.join([ self.compare_rule, 'DEBUG  ', 'INIT', '(INIT)',  "$file1_name = '"+self.file1_name+"'" ])  ) 
+		output.append( delimiter.join([ self.compare_rule, 'DEBUG  ', 'INIT', '(INIT)',  "$file2_name = '"+self.file2_name+"'" ])  ) 
+		output.append( delimiter.join([ self.compare_rule, 'DEBUG  ', 'INIT', '(INIT)',  "$ignore_field = "+str(self.ignore_field) ])  ) 
+		output.append( delimiter.join([ self.compare_rule, 'DEBUG  ', 'INIT', '(INIT)',  "$compare_key = "+str(self.compare_key) ])  ) 
+
+
 		for record in self.result:
 			#First fields
-			tmp = [record['compare_rule'], record['status'], record['group'] ] 
+			tmp = [record['compare_rule'], record['status'].ljust(7), record['group'] ] 
 			#Manage the key
 			if record['group'] == 'INIT' : tmp += [ '('+record['key']+')' ]
 			else: tmp += [ str(record['key']) ]
 
 			if 'message' in record: tmp += [ record['message'] ]
-			
-			if 'fieldname' in record :
+			elif 'fieldname' in record :
 				if 'file1_value' in record: val1 = record['file1_value']
 				else: val1 = ''
 				if 'file2_value' in record: val2 = record['file2_value']
 				else: val2 = ''
 
-				expected = [ "File 1 [{}] = '{}' at line {}".format( record['fieldname'], val1, record['file1_line'] ) ] 
+				expected = [ "File 1 {} = '{}' at line {}".format( record['fieldname'], val1, record['file1_line'] ) ] 
 				output.append(delimiter.join(tmp + expected) )
-				tmp += [ "File 2 [{}] = '{}' at line {}".format( record['fieldname'], val2, record['file2_line'] ) ]
-
+				tmp += [ "File 2 {} = '{}' at line {}".format( record['fieldname'], val2, record['file2_line'] ) ]
+			else:
+				tmp += [ '' ] # No message
 			output.append(delimiter.join(tmp) )
 
 		return '\n'.join(output)
@@ -184,7 +190,7 @@ class kuresult:
 		else:
 			self.compare_key=[i.strip().lower() for i in param.get(self.compare_rule, 'COMPARE_FIELD').split(',')]
 		if 'IGNORE_FIELD'.lower() not in param.options(self.compare_rule):
-			self.warning("INIT", "No section $compare_rule.IGNORE_FIELD in '$paramfile_name$'")
+			self.debug("INIT", "No section $compare_rule.IGNORE_FIELD in '$paramfile_name$'")
 		else:
 			self.ignore_field=[i.strip().lower() for i in param.get(self.compare_rule, 'IGNORE_FIELD').split(',')]
 
