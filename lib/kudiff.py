@@ -79,7 +79,7 @@ class kuresult:
 	def failure(self, group, message=None, **arg): self.store_result(status='FAILURE', group=group, message=message, **arg)
 	def warning(self, group, message=None, **arg): self.store_result(status='WARNING', group=group, message=message, **arg)
 	def error  (self, group, message=None, **arg): 
-		self.store_result(status='ERROR!!', group=group, message=message, **arg)
+		self.store_result(status='ERROR', group=group, message=message, **arg)
 		print(self)
 		quit()
 
@@ -108,13 +108,35 @@ class kuresult:
 
 		self.result.append(  dict({ (i,j) for i,j  in locals().items() if j and i !='self' }) )
 
-	def __str__(self):
-		output = ""
-		for i in self.result:
-			#for var, value in var_replace:
+	def __str__(self, format="STRING", delimiter=' ; '):
+		#Basic output: pseudo array
+		if format=="OBJECT" : return '[\n' + ',\n'.join([ str(i) for i in self.result ] ) + '\n]'
 
-			output += str(i) +'\n'
-		return output
+
+		display_list = ['file1_value' ,'file2_value']
+		output=[]
+		for record in self.result:
+			#First fields
+			tmp = [record['compare_rule'], record['status'], record['group'] ] 
+			#Manage the key
+			if record['group'] == 'INIT' : tmp += [ '('+record['key']+')' ]
+			else: tmp += [ str(record['key']) ]
+
+			if 'message' in record: tmp += [ record['message'] ]
+			
+			if 'fieldname' in record :
+				if 'file1_value' in record: val1 = record['file1_value']
+				else: val1 = ''
+				if 'file2_value' in record: val2 = record['file2_value']
+				else: val2 = ''
+
+				expected = [ "File 1 [{}] = '{}' at line {}".format( record['fieldname'], val1, record['file1_line'] ) ] 
+				output.append(';'.join(tmp + expected) )
+				tmp += [ "File 2 [{}] = '{}' at line {}".format( record['fieldname'], val2, record['file2_line'] ) ]
+
+			output.append(delimiter.join(tmp) )
+
+		return '\n'.join(output)
 
 
 	#print override for python prompt
@@ -226,7 +248,7 @@ class kuresult:
 				file1.seek(0)
 				file2.seek(0)
 			except Exception as e:
-				self.error("INIT", "Unable to open the csv files "+ str(e))
+				self.error("INIT", "Unable to open the csv files. "+ str(e))
 
 		#----------------------------------------------------
 		# Manage missmatching dialects
@@ -278,7 +300,7 @@ class kuresult:
 			out=[]
 			for name, number in self.compare_dict.items():
 				out.append(record[number])
-			return out
+			return tuple(out)
 		else:
 			out={}
 			for name, number in self.compare_dict.items():
@@ -374,22 +396,29 @@ if __name__ == '__main__':
 	if header1 == header2:
 		pass
 	elif header1[:len(header1)] == header2[:len(header1)]:
-		res.warning("Header2 match with additional fields: "+str(list(set(header2)-set(header1))))
+		checkFailed=True
+		res.failure("INIT", "Header2 match with additional fields: "+str(list(set(header2)-set(header1))))
 	elif len(set(header1) - set(header2))==0:
 		checkFailed=True
-		res.failure("Header2 order missmatch")
-		res.failure("INIT", "Header 1: "+ str(header1))
-		res.failure("INIT", "Header 2: "+ str(header2))
+		res.failure("INIT", "Header 2 has wrong field order",
+		fieldname='HEADER',
+		file1_value = str(header1),
+		file2_value = str(header2),
+		file1_line = "0",
+		file2_line = "0"
+			)
+		#res.failure("INIT", "Header 1: "+ str(header1))
+		#res.failure("INIT", "Header 2: "+ str(header2))
 	else:
 		checkFailed=True
 		missing=set(header1)-set(header2)
 		if missing != set():
-			res.failure("INIT", "Missing in header2:" + str(missing))
+			res.error("INIT", "Missing in header2:" + str(missing))
 		missing=set(header2)-set(header1)
 		if missing != set():
 			res.failure("INIT", "Missing in header1:" + str(missing))
 		del missing
-		res.error('INIT', "Header2 field name missmatch")
+		#res.error('INIT', "Header2 field name missmatch")
 
 
 	#Store both field number and field name in the res.compare_dict variable
@@ -452,7 +481,7 @@ if __name__ == '__main__':
 		if res.get_key(content1[i]) == res.get_key(content1[i+1]):
 			#checkFailed=True
 			#res.preparedetail("INIT", "File 1 duplicate skipped "+res.get_key(content1[i], True))
-			res.error("INIT", "Failed to fetch compare_key=$compare_key. Key is duplicated in file 1: " +res.get_key(content1[i], True))
+			res.error("INIT", "Compare_key " + str(res.get_key(content1[i])) + " is duplicated in file 1: "+ " at lines " + str(content1[i][-1]) + " and " + str(content1[i+1][-1]) )
 			#" at lines "+str(content1[i][-1]) +" and " + str(content1[i+1][-1])  )
 			#res.error('MAIN',  "File 1 duplicated key found")
 			del(content1[i])
@@ -467,7 +496,9 @@ if __name__ == '__main__':
 	while len(content2) > i+1:
 		if res.get_key(content2[i]) == res.get_key(content2[i+1]):
 			checkFailed=True
-			res.failure("MAIN", "Duplicated key in file 2 ", key=res.get_key(content2[i], True))
+			res.failure("MAIN", "Duplicated key in file 2 at lines " +  str(content2[i][-1]) + ' and ' +str(content2[i+1][-1]), 
+				key=res.get_key(content2[i])
+				)
 			# +" at lines "+str(content2[i][-1]) +" and " + str(content2[i+1][-1])  )
 			del(content2[i])
 			i=i-1
@@ -486,7 +517,7 @@ if __name__ == '__main__':
 		key1=res.get_key(content1[0])
 		key2=res.get_key(content2[0])
 		if key1 < key2:
-			res.failure("MAIN", "missing record in file2", key=res.get_key(content1[0], True))
+			res.failure("MAIN", "Missing record in file 2", key=res.get_key(content1[0]))
 			del content1[0]
 		elif key1 > key2:
 			unexpected.append(res.get_key(content2[0], True))
@@ -501,12 +532,12 @@ if __name__ == '__main__':
 						checkFailed=True
 						#res.failure("MAIN",  "File 1 {'" + str(header1[fieldNum]) +"': " + str(field) +"}" )
 						#res.failure("MAIN",  "File 2 {'"+ str(header1[fieldNum])  +"': " + str(content2[0][fieldNum])+"}" )
-						res.failure("MAIN", key=res.get_key(content1[0], prettyPrint=True), 
+						res.failure("MAIN", key=res.get_key(content1[0]), 
 							file1_value = str(field),
 							file2_value = str(content2[0][fieldNum]),
 							file1_line = str(content1[0][-1]),
 							file2_line = str(content2[0][-1]),
-							fieldname = str(field)
+							fieldname = str(header1[fieldNum])
 							)
 				fieldNum+=1
 			if checkFailed:
@@ -514,7 +545,7 @@ if __name__ == '__main__':
 				#res.failure("MAIN", "Data extracted from file 1 at line "+ str(content1[0][-1]) +", and from file 2 at line " +str(content2[0][-1]))
 				#res.failure("MAIN", key=res.get_key(content1[0], prettyPrint=True)) 
 			else:
-				res.success("MAIN", key=res.get_key(content1[0], prettyPrint=True) )
+				res.success("MAIN", key=res.get_key(content1[0]) )
 			del checkFailed
 
 			del content1[0]
@@ -524,7 +555,7 @@ if __name__ == '__main__':
 	#----------------------------------------------------
 	#Trailing missing records from file1
 	for record in content1:
-		res.failure("MAIN", "missing record in file2", key=res.get_key(record, True))
+		res.failure("MAIN", "Missing record in file 2. For reference, please check file 1, line " +str(content1[0][-1]), key=res.get_key(record))
 
 	checkFailed=False
 	#----------------------------------------------------
