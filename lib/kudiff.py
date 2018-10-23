@@ -6,7 +6,7 @@
 #
 ####################################################
 
-# ./kudiff -p ../training/res/diff.param -r HELLO -1 ../training/res/media_library.csv -2 ../training/res/media_library.csv
+# ./kudiff.py -p ../training/res/diff.param -r HELLO -1 ../training/res/media_library.csv -2 ../training/res/media_library.csv
 
 ### Sample param file ######
 #[GLOBAL]
@@ -46,8 +46,8 @@ def get_duplicate(list):
 ####################################################
 # Class to store the result
 #
-class kudiff:
 
+class kuresult:
 	def __init__(self, 
 				defaultdir=os.getcwd(), 
 				paramfile_name="kudiff.param",
@@ -57,8 +57,7 @@ class kudiff:
 				file1_name=None,
 				file2_name=None
 				):
-		self.record=[]
-		self.tmpdetail=[]
+		self.result=[]
 		self.defaultdir = defaultdir
 		self.paramfile_name = paramfile_name
 
@@ -76,63 +75,47 @@ class kudiff:
 		self.compare_dict={} #Field name and id 
 		self.ignore_field=None
 
-
-	#Add a result at the end of the record[] array
-	#def result(self, status, message, detail=""):
-	#	self.record.append({'status':status, 'message':message, 'detail':[]})
-
-	def success(self, message):
-		self.record.append({'status':'SUCCESS', 'message':message, 'detail':self.tmpdetail})
-		self.tmpdetail=[]
-	def failure(self, message):
-		self.record.append({'status':'FAILURE', 'message':message, 'detail':self.tmpdetail})
-		self.tmpdetail=[]
-	def warning(self, message):
-		self.record.append({'status':'WARNING', 'message':message, 'detail':[]})
-		#self.tmpdetail=[]
-	def error(self, message):
-		self.record.append({'status':'ERROR  ', 'message':message, 'detail':self.tmpdetail})
-		self.tmpdetail=[]
-		self.bye()
-	def bye(self, return_code=0):
+	def success(self, group, **arg): self.store_result(status='SUCCESS', group=group, **arg)
+	def failure(self, group, message=None, **arg): self.store_result(status='FAILURE', group=group, message=message, **arg)
+	def warning(self, group, message=None, **arg): self.store_result(status='WARNING', group=group, message=message, **arg)
+	def error  (self, group, message=None, **arg): 
+		self.store_result(status='ERROR!!', group=group, message=message, **arg)
 		print(self)
-		sys.exit(return_code)
+		quit()
 
-	#Add a warning on the last result created
-	def detail(self, detail):
-		self.record[-1]['detail'].append(detail)
+	def store_result(self, status, group, message=None, key=None, file1_value=None, file2_value=None, fieldname=None, file1_offset=None, file2_offset=None, file1_line=None, file2_line=None):
+		compare_rule=self.compare_rule
 
-	def preparedetail(self, detail):
-		self.tmpdetail.append(detail)
+		#Replace the variable names in $message
+		var_replace={'$defaultdir':self.defaultdir,
+		'$paramfile_name':self.paramfile_name,
+		'$file1_defaultdir':self.file1_defaultdir,
+		'$file2_defaultdir':self.file2_defaultdir,
+		'$file1_name':self.file1_name,
+		'$file2_name':self.file2_name,
+		'$file1_name_init':self.file1_name_init,
+		'$file2_name_init':self.file1_name_init,
+		'$compare_rule':self.compare_rule,
+		'$compare_key':str(self.compare_key),
+		'$compare_dict':str(self.compare_dict),
+		'$ignore_field':str(self.ignore_field)}
+		for var, val in var_replace.items():
+			if not val: val = 'None'
+			if message:	message=message.replace(var, val)
+		del var_replace, var, val
 
-	#Pretty print of the kudiff
+		if group and not key : key = group
+
+		self.result.append(  dict({ (i,j) for i,j  in locals().items() if j and i !='self' }) )
+
 	def __str__(self):
+		output = ""
+		for i in self.result:
+			#for var, value in var_replace:
 
-		print("DEBUG   -", self.compare_rule, "- defaultdir =",  self.defaultdir)
-		print("DEBUG   -", self.compare_rule, "- file1_defaultdir =",  self.file1_defaultdir)
-		print("DEBUG   -", self.compare_rule, "- file2_defaultdir =",  self.file2_defaultdir)
-		print("DEBUG   -", self.compare_rule, "- file1_name =",  self.file1_name)
-		print("DEBUG   -", self.compare_rule, "- file2_name =",  self.file2_name)
-		print("DEBUG   -", self.compare_rule, "- paramfile_name =",  self.paramfile_name)
-		if self.compare_key != []:
-			print("DEBUG   -", self.compare_rule, "- compare_key =", str(set(self.compare_key)))
-		else:
-			print("DEBUG   -", self.compare_rule, "- compare_key =", None)
-		if self.compare_dict != []:
-			print("DEBUG   -", self.compare_rule, "- compare_dict =", str(self.compare_dict))
-		else:
-			print("DEBUG   -", self.compare_rule, "- compare_dict =", None)
-		
-		if self.ignore_field != None:
-			print("DEBUG   -", self.compare_rule, "- ignore_field =", str(set(self.ignore_field)))
+			output += str(i) +'\n'
+		return output
 
-		res=""
-		for data in self.record:
-			if res != "": res+="\n"
-			res += str(data['status']) + " - " + str(self.compare_rule) + " - " + str(data['message'])
-			for w in data['detail']:
-				res += "\n | "+data['status']+" - "+ str(self.compare_rule) + " - " +str(w)
-		return res
 
 	#print override for python prompt
 	def __repr__(self):
@@ -145,17 +128,14 @@ class kudiff:
 		self.paramfile_name = self.clean_path(self.paramfile_name)
 
 		if not os.path.isfile(self.paramfile_name):
-			res.preparedetail("It can be defined by script argument: --param")
-			res.preparedetail("or by class constructor argument: 'paramfile_name'")
-			self.error("Unable to find param file: '" + str(self.paramfile_name)+"'")
+			self.error("INIT", "Unable to find param file '$paramfile_name'. It can be defined by script argument: --param or by class constructor argument: paramfile_name='/mydir/myfile.param'")
 
 		#Open param file
 		param = configparser.ConfigParser()
 		param.read(self.paramfile_name)
 
 		if 'GLOBAL' not in param.sections():
-			res.preparedetail("Please create this section, let it empty if required")
-			self.error("Unable to find [GLOBAL] section in param file: '"+self.paramfile_name+"'")
+			self.error("INIT", "Unable to find [GLOBAL] section in param file '$paramfile_name'")
 
 		#Get file1 default directory
 		if "FILE1_DEFAULTDIR".lower() in param.options('GLOBAL'):
@@ -173,16 +153,16 @@ class kudiff:
 
 		#Ensure a section exists for the files to be compared
 		if self.compare_rule not in param.sections():
-			self.error("Unable to find ["+str(self.compare_rule)+"] section in param file: '"+self.paramfile_name+"'")
+			self.error("INIT", "Unable to find [$compare_rule] section in param file: '$paramfile_name$'")
 
 
 		#Read the param file
 		if 'COMPARE_FIELD'.lower() not in param.options(self.compare_rule):
-			 self.error("Unable to find COMPARE_FIELD")
+			 self.error("INIT", "Unable to find $compare_rule.COMPARE_FIELD in '$paramfile_name$'")
 		else:
 			self.compare_key=[i.strip().lower() for i in param.get(self.compare_rule, 'COMPARE_FIELD').split(',')]
 		if 'IGNORE_FIELD'.lower() not in param.options(self.compare_rule):
-			self.warning("No section IGNORE_FIELD")
+			self.warning("INIT", "No section $compare_rule.IGNORE_FIELD in '$paramfile_name$'")
 		else:
 			self.ignore_field=[i.strip().lower() for i in param.get(self.compare_rule, 'IGNORE_FIELD').split(',')]
 
@@ -195,7 +175,7 @@ class kudiff:
 
 		#If still no FILE1_NAME, raise a warning 
 		if self.file1_name == None:
-			self.error("FILE1_NAME is not defined")
+			self.error("INIT", "file1_name=$file1_name")
 		else:
 		#Get file1_name full clean path
 			self.file1_name = self.clean_path(self.file1_name)
@@ -207,7 +187,7 @@ class kudiff:
 
 		#If still no FILE2_NAME, raise an exception
 		if self.file2_name == None:
-			self.error("FILE2_NAME is not defined")
+			self.error("INIT", "file2_name=$file2_name")
 		else:
 		#Get file2_name full clean path
 			self.file2_name = self.clean_path(self.file2_name)
@@ -216,17 +196,11 @@ class kudiff:
 	def check_isfile(self):
 		#Ensure the file exists
 		if not os.path.isfile(self.file1_name):
-			res.preparedetail("It can be defined by script argument: --file1")
-			res.preparedetail("or else by class constructor argument: 'file1_name'")
-			res.preparedetail("or else by param file variable: 'FILE1_NAME'")
-			self.error("Unable to find FILE1_NAME: '" + str(self.file1_name)+"'")
+			self.error("INIT", "Unable to find file1_name='$file1_name'")
 		
 		#Ensure the file exists
 		if not os.path.isfile(self.file2_name):
-			res.preparedetail("It can be defined by script argument: --file2")
-			res.preparedetail("or else by class constructor argument: 'file2_name'")
-			res.preparedetail("or else by param file variable: 'FILE2_NAME'")
-			self.error("Unable to find FILE2_NAME: '" + str(self.file2_name)+"'")
+			self.error("INIT", "Unable to find file2_name='$file2_name'")
 
 
 	def get_dialect(self):
@@ -252,7 +226,7 @@ class kudiff:
 				file1.seek(0)
 				file2.seek(0)
 			except Exception as e:
-				self.error("Unable to open the csv files "+ str(e))
+				self.error("INIT", "Unable to open the csv files "+ str(e))
 
 		#----------------------------------------------------
 		# Manage missmatching dialects
@@ -277,10 +251,10 @@ class kudiff:
 		}
 
 		if self.dialect1['delimiter'] not in [',', ';', '|'] :
-			self.error("Unable to determine the field delimiter for '"+self.file1_name+"'. This shall be due to a missmatching number or fields on the first few records.")
+			self.error("INIT","Unable to determine the field delimiter for '"+self.file1_name+"'. This shall be due to a missmatching number or fields on the first few records.")
 
 		if self.dialect2['delimiter'] not in [',', ';', '|'] :
-			self.error("Unable to determine the field delimiter for '"+self.file2_name+"'. This shall be due to a missmatching number or fields on the first few records.")
+			self.error("INIT","Unable to determine the field delimiter for '"+self.file2_name+"'. This shall be due to a missmatching number or fields on the first few records.")
 
 	# Get the absolute path of a file
 	#  mypath: file path and name
@@ -328,7 +302,7 @@ def _usage(errorMessage=None):
 
 if __name__ == '__main__':
 
-	res=kudiff()
+	res=kuresult()
 
 	try:
 		optlist, args = getopt.getopt(sys.argv[1:], 'p:r:1:2:h', ['help', 'param=', 'rule=', 'file1=', 'file2=', 'separator='])
@@ -353,7 +327,7 @@ if __name__ == '__main__':
 	for key in res.dialect1:
 		if res.dialect1[key] !=  res.dialect2[key]:
 			checkFailed=True
-			res.preparedetail("CSV dialect missmatch. " + str(key) + " is '"+str( res.dialect1[key])
+			res.failure('INIT', "CSV dialect missmatch. " + str(key) + " is '"+str( res.dialect1[key])
 			+ "' in file1 but '"+str( res.dialect2[key])+"' in file2")
 
 	try:
@@ -364,7 +338,7 @@ if __name__ == '__main__':
 		csv1=csv.reader(open(res.file1_name, 'r'), **tmp)
 
 	except Exception as e:
-		res.error("Unable to read file1 '" + res.file2_name + "', "+ str(e) )
+		res.error('INIT', "Unable to read file1='$file1_name' "+ str(e) )
 
 	try:
 
@@ -376,7 +350,7 @@ if __name__ == '__main__':
 		del tmp
 
 	except Exception as e:
-		res.error("Unable to read file2 '" + res.file2_name + "', "+ str(e) )
+		res.error('INIT',"Unable to read file2='$file2_name' "+ str(e) )
 
 	#----------------------------------------------------
 	# Manage header logic
@@ -390,12 +364,12 @@ if __name__ == '__main__':
 
 
 	#Ensure there is no duplicate in headers
-	if len(get_duplicate(header1)): res.error("Header 1 has duplicated fields: "+ str(get_duplicate(header1)))
-	if len(get_duplicate(header2)):	res.error("Header 2 has duplicated fields: "+ str(get_duplicate(header2)))
+	if len(get_duplicate(header1)): res.error('INIT', "Header 1 has duplicated fields: "+ str(get_duplicate(header1)))
+	if len(get_duplicate(header2)):	res.error('INIT', "Header 2 has duplicated fields: "+ str(get_duplicate(header2)))
 
 	#Ensure all the compare key fields are available in header file
-	if len(set(res.compare_key) - set(header1)) != 0:	res.error("Key fields are missing in header1: "+str(set(res.compare_key) - set(header1)))
-	if len(set(res.compare_key) - set(header2)) != 0:	res.error("Key fields are missing in header2: "+str(set(res.compare_key) - set(header2)))
+	if len(set(res.compare_key) - set(header1)) != 0:	res.error('INIT',"Key fields are missing in header1"+str(set(res.compare_key) - set(header1)))
+	if len(set(res.compare_key) - set(header2)) != 0:	res.error('INIT',"Key fields are missing in header2: "+str(set(res.compare_key) - set(header2)))
 
 	if header1 == header2:
 		pass
@@ -403,19 +377,19 @@ if __name__ == '__main__':
 		res.warning("Header2 match with additional fields: "+str(list(set(header2)-set(header1))))
 	elif len(set(header1) - set(header2))==0:
 		checkFailed=True
-		res.preparedetail("Header2 order missmatch")
-		res.preparedetail("Header 1: "+ str(header1))
-		res.preparedetail("Header 2: "+ str(header2))
+		res.failure("Header2 order missmatch")
+		res.failure("INIT", "Header 1: "+ str(header1))
+		res.failure("INIT", "Header 2: "+ str(header2))
 	else:
 		checkFailed=True
 		missing=set(header1)-set(header2)
 		if missing != set():
-			res.preparedetail("Missing in header2:" + str(missing))
+			res.failure("INIT", "Missing in header2:" + str(missing))
 		missing=set(header2)-set(header1)
 		if missing != set():
-			res.preparedetail("Missing in header1:" + str(missing))
+			res.failure("INIT", "Missing in header1:" + str(missing))
 		del missing
-		res.error("Header2 field name missmatch")
+		res.error('INIT', "Header2 field name missmatch")
 
 
 	#Store both field number and field name in the res.compare_dict variable
@@ -442,7 +416,7 @@ if __name__ == '__main__':
 			if len(record1)==0: continue
 			#Log error
 			checkFailed=True
-			res.preparedetail("File1, Missing compare key for " + str(csv1.line_num) + ": " + str(record1))
+			res.failure("INIT", "File1, Missing compare key at line " + str(csv1.line_num) + ": " + str(record1))
 
 	#Read all rows and ensure they contains the compare key
 	for record2 in csv2:
@@ -454,12 +428,13 @@ if __name__ == '__main__':
 			if len(record2)==0: continue
 			#Log error
 			checkFailed=True
-			res.preparedetail("File2, Missing compare key for " + str(csv2.line_num) + ": " + str(record2))
+			res.failure("INIT", "File2, Missing compare key at line " + str(csv2.line_num) + ": " + str(record2))
 
 	if checkFailed:
-		res.failure("File format missmatch")
+	#	res.failure('INIT',"File format missmatch")
+		pass
 	else:
-		res.success("File format match")
+		res.success('INIT',message="File format match")
 	del checkFailed
 	checkFailed=False
 
@@ -476,9 +451,10 @@ if __name__ == '__main__':
 	while len(content1) > i+1:
 		if res.get_key(content1[i]) == res.get_key(content1[i+1]):
 			#checkFailed=True
-			#res.preparedetail("File 1 duplicate skipped "+res.get_key(content1[i], True))
-			res.preparedetail(  "Duplicated key: "+res.get_key(content1[i], True) +" at lines "+str(content1[i][-1]) +" and " + str(content1[i+1][-1])  )
-			res.error(  "File 1 duplicated key found")
+			#res.preparedetail("INIT", "File 1 duplicate skipped "+res.get_key(content1[i], True))
+			res.error("INIT", "Failed to fetch compare_key=$compare_key. Key is duplicated in file 1: " +res.get_key(content1[i], True))
+			#" at lines "+str(content1[i][-1]) +" and " + str(content1[i+1][-1])  )
+			#res.error('MAIN',  "File 1 duplicated key found")
 			del(content1[i])
 			i=i-1
 		i=i+1
@@ -491,15 +467,16 @@ if __name__ == '__main__':
 	while len(content2) > i+1:
 		if res.get_key(content2[i]) == res.get_key(content2[i+1]):
 			checkFailed=True
-			res.preparedetail(  "Duplicated key: "+res.get_key(content2[i], True) +" at lines "+str(content2[i][-1]) +" and " + str(content2[i+1][-1])  )
+			res.failure("MAIN", "Duplicated key in file 2 ", key=res.get_key(content2[i], True))
+			# +" at lines "+str(content2[i][-1]) +" and " + str(content2[i+1][-1])  )
 			del(content2[i])
 			i=i-1
 		i=i+1
 
-	if checkFailed:
-		res.failure("Duplicated records found in file 2")
-	else:
-		res.success("No duplicated record in file 2")
+#	if checkFailed:
+#		res.failure("INIT", "Duplicated records found in file 2")
+#	else:
+#		res.success("INIT", message="No duplicated record in file 2")
 
 
 	unexpected=[]
@@ -509,7 +486,7 @@ if __name__ == '__main__':
 		key1=res.get_key(content1[0])
 		key2=res.get_key(content2[0])
 		if key1 < key2:
-			res.failure("missing record in file2" + res.get_key(content1[0], True))
+			res.failure("MAIN", "missing record in file2", key=res.get_key(content1[0], True))
 			del content1[0]
 		elif key1 > key2:
 			unexpected.append(res.get_key(content2[0], True))
@@ -522,15 +499,22 @@ if __name__ == '__main__':
 				if header1[fieldNum] not in res.ignore_field:
 					if field != content2[0][fieldNum]:
 						checkFailed=True
-						res.preparedetail( "File 1 {'" + str(header1[fieldNum]) +"': " + str(field) +"}" )
-						res.preparedetail( "File 2 {'"+ str(header1[fieldNum])  +"': " + str(content2[0][fieldNum])+"}" )
+						#res.failure("MAIN",  "File 1 {'" + str(header1[fieldNum]) +"': " + str(field) +"}" )
+						#res.failure("MAIN",  "File 2 {'"+ str(header1[fieldNum])  +"': " + str(content2[0][fieldNum])+"}" )
+						res.failure("MAIN", key=res.get_key(content1[0], prettyPrint=True), 
+							file1_value = str(field),
+							file2_value = str(content2[0][fieldNum]),
+							file1_line = str(content1[0][-1]),
+							file2_line = str(content2[0][-1]),
+							fieldname = str(field)
+							)
 				fieldNum+=1
 			if checkFailed:
-				res.preparedetail("Data extracted from file 1 at line "+ str(content1[0][-1]) +", and from file 2 at line " +str(content2[0][-1]))
-				res.failure("Key: "+ res.get_key(content1[0], prettyPrint=True))
-				# 
+				pass
+				#res.failure("MAIN", "Data extracted from file 1 at line "+ str(content1[0][-1]) +", and from file 2 at line " +str(content2[0][-1]))
+				#res.failure("MAIN", key=res.get_key(content1[0], prettyPrint=True)) 
 			else:
-				res.success("Key: " + res.get_key(content1[0], prettyPrint=True) )
+				res.success("MAIN", key=res.get_key(content1[0], prettyPrint=True) )
 			del checkFailed
 
 			del content1[0]
@@ -540,7 +524,7 @@ if __name__ == '__main__':
 	#----------------------------------------------------
 	#Trailing missing records from file1
 	for record in content1:
-		res.failure("missing record in file2" + res.get_key(record, True))
+		res.failure("MAIN", "missing record in file2", key=res.get_key(record, True))
 
 	checkFailed=False
 	#----------------------------------------------------
@@ -551,14 +535,14 @@ if __name__ == '__main__':
 	if unexpected != []:
 		checkFailed=True
 		for detail in unexpected:
-			res.preparedetail("Unexpected file 2 record: " + str(detail))
+			res.failure("MAIN", "Unexpected file 2 record: " + str(detail))
 
 
 	if checkFailed:
-		res.failure("File 2 has unexpected records")
-	else:
-		res.success("File 2 has no additional record")
+		res.failure("MAIN", message="File 2 has unexpected records")
+	#else:
+	#	res.success("MAIN", message="File 2 has no additional record")
 
 
-	res.bye()
+	print(res)
 
