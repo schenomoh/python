@@ -6,35 +6,45 @@
 #
 ####################################################
 
+# ./kudiff.py -p ../training/res/diff.param -r HELLO -1 ../training/res/media_library.csv -2 ../training/res/media_library.csv
+
 #################################################"
 def _usage(errorMessage=None):
+	print("""
+Sample param file:
+   [GLOBAL]
+   FILE1_DEFAULTDIR=$HOME/APR/python/training/expected/
+   FILE2_DEFAULTDIR=$HOME/APR/python/training/result/
+
+   [OVERRIDE]
+   LOAD_DATE=2018-16-02
+
+   [HELLO]
+   FILE1_NAME=$HOME/APR/python/training/res/media_library.csv
+   FILE2_NAME=$HOME/APR/python/training/res/media_library2.csv
+   IGNORE_FIELD=load_id, LAST_UPDATE
+   COMPARE_FIELD=Main artist, Album, Track Id
+   
+   [HELLO2]
+   FILE1_NAME=media_library.csv
+   FILE2_NAME=media_library.csv
+   COMPARE_FIELD=Main artist, Album, Track Id
+   #IGNORE_FIELD=load_id, LAST_UPDATE
+
+		""")
 	print(" Usage: " + sys.argv[0] +" [OPTIONS]")
 	print("   -h, --help: this help")
 	print("   -p, --param: param file location")
 	print("   -r, --rule: section of the param file containing the comparaison rules")
 	print("   -1, --file1: reference file for comparaison")
 	print("   -2, --file1: file compared")
+
 	if errorMessage != None:
 		print("\n", errorMessage)
 	sys.exit(2)
 
 
-# ./kudiff.py -p ../training/res/diff.param -r HELLO -1 ../training/res/media_library.csv -2 ../training/res/media_library.csv
 
-### Sample param file ######
-#[GLOBAL]
-#file1_defaultdir=$HOME/APR/python
-#file2_defaultdir=$HOME/APR/python
-#
-#[OVERRIDE]
-#LOAD_DATE=2018-16-02
-#
-#[HELLO]
-#FILE1=$file1_defaultdir/training/res/media_library.csv
-#FILE2=$HOME/APR/python/training/res/media_library2.csv
-#
-#IGNORE_FIELD=load_id, LAST_UPDATE,
-#res.compare_key=Main artist, Album, Track Id, 
 
 import csv, io, sys, getopt, copy, os
 import configparser
@@ -216,7 +226,7 @@ class kucompare:
 		#------------- Manage FILE1 -------------
 		#If no FILE1_NAME, retrieve FILE1_NAME from param file
 		if self.file1_name == None and "FILE1_NAME".lower() in param.options(self.compare_rule):
-			self.file1_name = self._clean_path( param.get(self.compare_rule, "FILE1_NAME"))
+			self.file1_name = self._clean_path( param.get(self.compare_rule, "FILE1_NAME"), self.file1_defaultdir) 
 
 		#If still no FILE1_NAME, raise a warning 
 		if self.file1_name == None:
@@ -228,7 +238,7 @@ class kucompare:
 		#------------- Manage FILE2 -------------
 		#If no FILE2_NAME, retrieve FILE2_NAME from param file
 		if self.file2_name == None and "FILE2_NAME".lower() in param.options(self.compare_rule):
-			self.file2_name = self._clean_path( param.get(self.compare_rule, "FILE2_NAME"))
+			self.file2_name = self._clean_path( param.get(self.compare_rule, "FILE2_NAME"), self.file2_defaultdir)
 
 		#If still no FILE2_NAME, raise an exception
 		if self.file2_name == None:
@@ -485,7 +495,7 @@ class kucompare:
 				fieldNum=0
 				checkFailed=False
 				for field in content1[0][:-1]:
-					if header1[fieldNum] not in self.ignore_field:
+					if self.ignore_field is None or header1[fieldNum] not in self.ignore_field:
 						if field != content2[0][fieldNum]:
 							checkFailed=True
 							#self.failure("MAIN",  "File 1 {'" + str(header1[fieldNum]) +"': " + str(field) +"}" )
