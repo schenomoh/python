@@ -158,7 +158,7 @@ class kucompare:
 			tmp = [compare_rule, record['status'].ljust(7), record['group'] ] 
 			#Manage the key
 			if record['group'] == 'INIT' : tmp += [ '('+record['key']+')' ]
-			else: tmp += [ str(record['key']) ]
+			else: tmp += [ str(  '-'.join(record['key'])  ) ]
 
 			if 'message' in record: tmp += [ record['message'] ]
 			elif 'fieldname' in record :
@@ -564,8 +564,8 @@ class kucompare:
 
 		if not prettyPrint:
 			out=[]
-			for name, number in self.compare_dict.items():
-				out.append(record[number])
+			for name in self.compare_key:
+				out.append(record[self.compare_dict[name]])
 			return tuple(out)
 		else:
 			out={}
