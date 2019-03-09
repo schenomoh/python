@@ -1,5 +1,5 @@
-#!/usr/bin/python3.4
-#!/usr/bin/python
+#!/usr/bin/env python3
+
 ####################################################
 #
 #  https://github.com/schenomoh/python
@@ -11,26 +11,30 @@
 #################################################"
 def _usage(errorMessage=None):
 	print("""
-Sample param file:
-   [GLOBAL]
-   FILE1_DEFAULTDIR=$HOME/APR/python/training/expected/
-   FILE2_DEFAULTDIR=$HOME/APR/python/training/result/
 
-   [OVERRIDE]
-   LOAD_DATE=2018-16-02
 
-   [HELLO]
-   FILE1_NAME=$HOME/APR/python/training/res/media_library.csv
-   FILE2_NAME=$HOME/APR/python/training/res/media_library2.csv
-   IGNORE_FIELD=load_id, LAST_UPDATE
-   COMPARE_FIELD=Main artist, Album, Track Id
-   
-   [HELLO2]
-   FILE1_NAME=media_library.csv
-   FILE2_NAME=media_library.csv
-   COMPARE_FIELD=Main artist, Album, Track Id
-   #IGNORE_FIELD=load_id, LAST_UPDATE
 
+== Example: explicit path in script call ==
+
+$HOME/m2r/python_lib/kudiff.py --file1=$HOME/APR/CHAINTEST/prod.csv --file2=$HOME/APR/CHAINTEST/u01.csv --rule=M2R_DTM_MIFID --param $HOME/APR/CHAINTEST/test.param
+test.param
+	[GLOBAL]
+	[M2R_DTM_MIFID]
+	PRIMARY_KEY=REPORTINGID, REPORTINGVERSION, REPORTINGTYPE, SOURCENAME, DATE_APPLI
+	IGNORE_FIELD=MIFIDKEYID, DATE_SESSION
+
+== Example: no path specified. All files have to be in the current folder ==
+
+$HOME/m2r/python_lib/kudiff.py --rule=M2R_DTM_MIFID
+kudiff.param
+	[GLOBAL]
+	[M2R_DTM_MIFID]
+	PRIMARY_KEY=REPORTINGID, REPORTINGVERSION, REPORTINGTYPE, SOURCENAME, DATE_APPLI
+	IGNORE_FIELD=MIFIDKEYID, DATE_SESSION
+	FILE1_NAME=prod.csv
+	FILE2_NAME=u01.csv
+
+== Script argument ==
 		""")
 	print(" Usage: " + sys.argv[0] +" [OPTIONS]")
 	print("   -h, --help: this help")
@@ -50,6 +54,11 @@ import csv, io, sys, getopt, copy, os
 import configparser
 import json
 
+#Identify if path separator is force slash or anti slash
+if os.path.abspath('.').count('/') > 0:
+  OS_PATHSEPARATOR='/'
+else:
+  OS_PATHSEPARATOR = '\\'
 
 ####################################################
 # Returns the list of duplicated values
@@ -96,6 +105,7 @@ class kucompare:
 		self.compare_rule=compare_rule
 		self.compare_key=[] # Field names from param file or input
 		self.compare_dict={} #Field name and id 
+		self.compare_dict2={}
 		self.ignore_field=None
 
 	def success(self, group, **arg): self._store_result(status='SUCCESS', group=group, **arg)
@@ -158,7 +168,7 @@ class kucompare:
 			tmp = [compare_rule, record['status'].ljust(7), record['group'] ] 
 			#Manage the key
 			if record['group'] == 'INIT' : tmp += [ '('+record['key']+')' ]
-			else: tmp += [ str(  '-'.join(record['key'])  ) ]
+			else: tmp += [ str(  '-'.join((record['key']))  ) ]
 
 			if 'message' in record: tmp += [ record['message'] ]
 			elif 'fieldname' in record :
@@ -212,10 +222,10 @@ class kucompare:
 
 
 		#Read the param file
-		if 'COMPARE_FIELD'.lower() not in param.options(self.compare_rule):
-			 self.error("INIT", "Unable to find $compare_rule.COMPARE_FIELD in '$paramfile_name$'")
+		if 'PRIMARY_KEY'.lower() not in param.options(self.compare_rule):
+			 self.error("INIT", "Unable to find $compare_rule.PRIMARY_KEY in '$paramfile_name$'")
 		else:
-			self.compare_key=[i.strip().lower() for i in param.get(self.compare_rule, 'COMPARE_FIELD').split(',')]
+			self.compare_key=[i.strip().lower() for i in param.get(self.compare_rule, 'PRIMARY_KEY').split(',')]
 		if 'IGNORE_FIELD'.lower() not in param.options(self.compare_rule):
 			self.debug("INIT", "No section $compare_rule.IGNORE_FIELD in '$paramfile_name$'")
 		else:
@@ -225,6 +235,7 @@ class kucompare:
 
 		#------------- Manage FILE1 -------------
 		#If no FILE1_NAME, retrieve FILE1_NAME from param file
+		if self.file1_name == '' : self.file1_name = None
 		if self.file1_name == None and "FILE1_NAME".lower() in param.options(self.compare_rule):
 			self.file1_name = self._clean_path( param.get(self.compare_rule, "FILE1_NAME"), self.file1_defaultdir) 
 
@@ -237,6 +248,7 @@ class kucompare:
 
 		#------------- Manage FILE2 -------------
 		#If no FILE2_NAME, retrieve FILE2_NAME from param file
+		if self.file2_name == '' : self.file2_name = None
 		if self.file2_name == None and "FILE2_NAME".lower() in param.options(self.compare_rule):
 			self.file2_name = self._clean_path( param.get(self.compare_rule, "FILE2_NAME"), self.file2_defaultdir)
 
@@ -391,7 +403,7 @@ class kucompare:
 
 		#Store both field number and field name in the self.compare_dict variable
 		self.compare_dict={fieldName: header1.index(fieldName) for fieldName in self.compare_key}
-
+		self.compare_dict2={fieldName: header2.index(fieldName) for fieldName in self.compare_key}
 		#Number of fields required to be able to retrive the compare key
 
 		required_fieldcount = max({ v for k,v in self.compare_dict.items()}) + 1 
@@ -435,11 +447,10 @@ class kucompare:
 		del checkFailed
 		checkFailed=False
 
+
 		#sort the content of my files
 		content1.sort(key=self._get_key)
-		content2.sort(key=self._get_key)
-
-
+		content2.sort(key=self._get_key2)
 
 		#----------------------------------------------------
 		#Remove duplicate in file 1
@@ -462,10 +473,10 @@ class kucompare:
 
 		i=0
 		while len(content2) > i+1:
-			if self._get_key(content2[i]) == self._get_key(content2[i+1]):
+			if self._get_key2(content2[i]) == self._get_key2(content2[i+1]):
 				checkFailed=True
 				self.failure("MAIN", "Duplicated key in file 2 at lines " +  str(content2[i][-1]) + ' and ' +str(content2[i+1][-1]), 
-					key=self._get_key(content2[i])
+					key=self._get_key2(content2[i])
 					)
 				# +" at lines "+str(content2[i][-1]) +" and " + str(content2[i+1][-1])  )
 				del(content2[i])
@@ -483,12 +494,12 @@ class kucompare:
 		#Loop on file1
 		while len(content1) > 0 and len(content2) > 0 :
 			key1=self._get_key(content1[0])
-			key2=self._get_key(content2[0])
+			key2=self._get_key2(content2[0])
 			if key1 < key2:
 				self.failure("MAIN", "Missing record in file 2", key=self._get_key(content1[0]))
 				del content1[0]
 			elif key1 > key2:
-				unexpected.append(self._get_key(content2[0], True))
+				unexpected.append(self._get_key2(content2[0], True))
 				del content2[0]
 			else:
 				#Process the field comparaison
@@ -496,13 +507,14 @@ class kucompare:
 				checkFailed=False
 				for field in content1[0][:-1]:
 					if self.ignore_field is None or header1[fieldNum] not in self.ignore_field:
-						if field != content2[0][fieldNum]:
+						fieldNum2 = header2.index(header1[fieldNum])
+						if field != content2[0][fieldNum2]:
 							checkFailed=True
 							#self.failure("MAIN",  "File 1 {'" + str(header1[fieldNum]) +"': " + str(field) +"}" )
 							#self.failure("MAIN",  "File 2 {'"+ str(header1[fieldNum])  +"': " + str(content2[0][fieldNum])+"}" )
 							self.failure("MAIN", key=self._get_key(content1[0]), 
 								file1_value = str(field),
-								file2_value = str(content2[0][fieldNum]),
+								file2_value = str(content2[0][fieldNum2]),
 								file1_line = str(content1[0][-1]),
 								file2_line = str(content2[0][-1]),
 								fieldname = str(header1[fieldNum])
@@ -530,7 +542,7 @@ class kucompare:
 		#Trailing unexpected records in file2
 		for record in content2:
 			checkFailed=True
-			unexpected.append(self._get_key(record))
+			unexpected.append(self._get_key2(record))
 		if unexpected != []:
 			checkFailed=True
 			for detail in unexpected:
@@ -552,8 +564,8 @@ class kucompare:
 		if defaultdir == None: 
 			defaultdir = self.defaultdir
 		mypath = os.path.expandvars(mypath)
-		if mypath[0] != '/':
-			mypath = os.path.abspath( defaultdir +'/' + mypath )
+		if mypath.count(OS_PATHSEPARATOR) == 0:
+			mypath = os.path.abspath( defaultdir +OS_PATHSEPARATOR + mypath )
 		else:
 			mypath = os.path.abspath(mypath)
 
@@ -569,9 +581,22 @@ class kucompare:
 			return tuple(out)
 		else:
 			out={}
-			for name, number in self.compare_dict.items():
-				out[name]=record[number]
+			for name in self.compare_key:
+				out[name]=record[self.compare_dict[name]]
 			return str(out)
+
+	def _get_key2(self, record, prettyPrint=False):
+		if not prettyPrint:
+			out=[]
+			for name in self.compare_key:
+				out.append(record[self.compare_dict2[name]])
+			return tuple(out)
+		else:
+			out={}
+			for name in self.compare_key:
+				out[name]=record[self.compare_dict2[name]]
+			return str(out)
+
 
 if __name__ == '__main__':
 
@@ -599,4 +624,3 @@ if __name__ == '__main__':
 
 	#print( res.dump(format='OBJECT') )
 	print (res )
-
