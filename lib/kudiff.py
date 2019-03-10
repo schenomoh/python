@@ -8,11 +8,16 @@
 
 # ./kudiff.py -p ../training/res/diff.param -r HELLO -1 ../training/res/media_library.csv -2 ../training/res/media_library.csv
 
+from json import dumps as json_dumps
+
 #################################################"
 def _usage(errorMessage=None):
 	print("""
-
-
+This script compares CSV files. Please note its main caracteristics:
+=> Designed to compare 10k lines CSV with Unix shell
+=> Store everything in memory
+=> Functions have side effects
+=> Adapted for JSON and Windows
 
 == Example: explicit path in script call ==
 
@@ -31,8 +36,8 @@ kudiff.param
 	[M2R_DTM_MIFID]
 	PRIMARY_KEY=REPORTINGID, REPORTINGVERSION, REPORTINGTYPE, SOURCENAME, DATE_APPLI
 	IGNORE_FIELD=MIFIDKEYID, DATE_SESSION
-	FILE1_NAME=prod.csv
-	FILE2_NAME=u01.csv
+	FILE1=prod.csv
+	FILE2=u01.csv
 
 == Script argument ==
 		""")
@@ -79,7 +84,7 @@ def _get_duplicate_in_csv(list):
 # Class to store the result
 #
 
-class kucompare:
+class Log:
 	def __init__(self, 
 				defaultdir=os.getcwd(), 
 				paramfile_name="kudiff.param",
@@ -107,14 +112,23 @@ class kucompare:
 		self.compare_dict={} #Field name and id 
 		self.compare_dict2={}
 		self.ignore_field=None
+		self.lastErrorObject=None
 
 	def success(self, group, **arg): self._store_result(status='SUCCESS', group=group, **arg)
 	def failure(self, group, message=None, **arg): self._store_result(status='FAILURE', group=group, message=message, **arg)
 	def debug(self, group, message=None, **arg): self._store_result(status='DEBUG', group=group, message=message, **arg)
+	
+	
 	def error  (self, group, message=None, **arg): 
 		self._store_result(status='ERROR', group=group, message=message, **arg)
-		print(self)
-		quit()
+		
+		#Print status when called from Shell
+		if __name__ == '__main__':
+			print(self)
+			sys.exit(-1)
+		#Raise clean exception when imported as library
+		else:
+			raise BaseException(message)
 
 	def _store_result(self, status, group, message=None, key=None, file1_value=None, file2_value=None, fieldname=None, file1_offset=None, file2_offset=None, file1_line=None, file2_line=None):
 		compare_rule=self.compare_rule
@@ -148,43 +162,95 @@ class kucompare:
 	def __repr__(self):
 		return self.dump(format="STRING")
 
-	def dump(self, format="OBJECT", delimiter=' ; '):
+	def dump(self, format="JSON", delimiter=' ; '):
+		
 		#Basic output: pseudo array
-		if format=="OBJECT" : return '[\n' + ',\n'.join([ str(i) for i in self.result ] ) + '\n]'
+		if format=="JSON":
+			output={
+				'paramfile_name':self.paramfile_name,
+				'compare_rule':self.compare_rule,
+				'file1_name':self.file1_name,
+				'file2_name':self.file2_name,
+				'ignore_field':self.ignore_field, 
+				'compare_key':self.compare_key,
+				'result':[]}
+			last_rule = None
+			last_key = None
+			
+			#Get status of init. When sorting alphabetically, order will be: ERROR, FAILURE, SUCCESS
+			init_status = sorted([a['status'] for a in self.result if a['group']=='INIT' ])[0]
+			output['result'].append( 
+				{#'key': dict(zip(self.compare_key, last_key)),
+				'group': 'INIT',
+				'status': init_status,
+				'details':[]
+				}
+			)
+			
+			
+			#If new key found, create new entry in output result
+			for line in self.result:
+				#print(line)
+				if line['key'] != last_key and line['group'] != 'INIT':
+					last_key = line['key']
+					output['result'].append( 
+						{'key': dict(zip(self.compare_key, last_key)),
+						'group': line['group'],
+						'status': line['status'],
+						'details':[]
+						}
+					)
+					
+				if 'message' in line:
+					output['result'][-1]['message']=line['message']
+				#Add diff details at the end of output result
+				if 'fieldname' in line:
+					output['result'][-1]['details'].append({
+						'fieldname':line['fieldname'],
+						'file1_value':line['file1_value'],
+						'file2_value':line['file2_value'],
+						'file1_line':line['file1_line'],
+						'file2_line':line['file2_line']
+						})
 
-		output=[]
-		#Debug data
-		output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$paramfile_name = '"+str(self.paramfile_name)+"'" ])  ) 
-		output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$file1_name = '"+str(self.file1_name)+"'" ])  ) 
-		output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$file2_name = '"+str(self.file2_name)+"'" ])  ) 
-		output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$ignore_field = "+str(self.ignore_field) ])  ) 
-		output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$compare_key = "+str(self.compare_key) ])  ) 
+		
+			return json_dumps(output, indent=2, ensure_ascii=False)
+		
+		else:
+		#Manage CSV like format
+			output=[]
+			#Debug data
+			output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$paramfile_name = '"+str(self.paramfile_name)+"'" ])  ) 
+			output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$file1_name = '"+str(self.file1_name)+"'" ])  ) 
+			output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$file2_name = '"+str(self.file2_name)+"'" ])  ) 
+			output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$ignore_field = "+str(self.ignore_field) ])  ) 
+			output.append( delimiter.join([ str(self.compare_rule), 'DEBUG  ', 'INIT', '(INIT)',  "$compare_key = "+str(self.compare_key) ])  ) 
 
 
-		for record in self.result:
-			#First fields
-			if 'compare_rule' in record: compare_rule = record['compare_rule']
-			else: compare_rule = "None"
-			tmp = [compare_rule, record['status'].ljust(7), record['group'] ] 
-			#Manage the key
-			if record['group'] == 'INIT' : tmp += [ '('+record['key']+')' ]
-			else: tmp += [ str(  '-'.join((record['key']))  ) ]
+			for record in self.result:
+				#First fields
+				if 'compare_rule' in record: compare_rule = record['compare_rule']
+				else: compare_rule = "None"
+				tmp = [compare_rule, record['status'].ljust(7), record['group'] ] 
+				#Manage the key
+				if record['group'] == 'INIT' : tmp += [ '('+record['key']+')' ]
+				else: tmp += [ str(  '-'.join((record['key']))  ) ]
 
-			if 'message' in record: tmp += [ record['message'] ]
-			elif 'fieldname' in record :
-				if 'file1_value' in record: val1 = record['file1_value']
-				else: val1 = ''
-				if 'file2_value' in record: val2 = record['file2_value']
-				else: val2 = ''
+				if 'message' in record: tmp += [ record['message'] ]
+				elif 'fieldname' in record :
+					if 'file1_value' in record: val1 = record['file1_value']
+					else: val1 = ''
+					if 'file2_value' in record: val2 = record['file2_value']
+					else: val2 = ''
 
-				expected = [ "File 1 {} = '{}' at line {}".format( record['fieldname'], val1, record['file1_line'] ) ] 
-				output.append(delimiter.join(tmp + expected) )
-				tmp += [ "File 2 {} = '{}' at line {}".format( record['fieldname'], val2, record['file2_line'] ) ]
-			else:
-				tmp += [ '' ] # No message
-			output.append(delimiter.join(tmp) )
+					expected = [ "File 1 {} = '{}' at line {}".format( record['fieldname'], val1, record['file1_line'] ) ] 
+					output.append(delimiter.join(tmp + expected) )
+					tmp += [ "File 2 {} = '{}' at line {}".format( record['fieldname'], val2, record['file2_line'] ) ]
+				else:
+					tmp += [ '' ] # No message
+				output.append(delimiter.join(tmp) )
 
-		return '\n'.join(output)
+			return '\n'.join(output)
 
 
 	def read_param(self):
@@ -197,8 +263,17 @@ class kucompare:
 
 		#Open param file
 		param = configparser.ConfigParser()
-		param.read(self.paramfile_name)
-
+		try:
+			param.read(self.paramfile_name)
+		except Exception as e:
+			self.lastErrorObject = e
+			pass
+		#Use script custom error management, if any
+		if self.lastErrorObject is not None:
+			self.error("INIT", str(self.lastErrorObject).replace('\n',' - '))
+		else:
+			self.lastErrorObject = None
+			
 		if 'GLOBAL' not in param.sections():
 			self.error("INIT", "Unable to find [GLOBAL] section in param file '$paramfile_name'")
 
@@ -218,48 +293,76 @@ class kucompare:
 
 		#Ensure a section exists for the files to be compared
 		if self.compare_rule not in param.sections():
-			self.error("INIT", "Unable to find [$compare_rule] section in param file: '$paramfile_name$'")
+			self.error("INIT", "Unable to find [$compare_rule] section in param file: '$paramfile_name'")
 
 
 		#Read the param file
 		if 'PRIMARY_KEY'.lower() not in param.options(self.compare_rule):
-			 self.error("INIT", "Unable to find $compare_rule.PRIMARY_KEY in '$paramfile_name$'")
+			 self.error("INIT", "Unable to find $compare_rule.PRIMARY_KEY in '$paramfile_name'")
 		else:
 			self.compare_key=[i.strip().lower() for i in param.get(self.compare_rule, 'PRIMARY_KEY').split(',')]
 		if 'IGNORE_FIELD'.lower() not in param.options(self.compare_rule):
-			self.debug("INIT", "No section $compare_rule.IGNORE_FIELD in '$paramfile_name$'")
+			self.debug("INIT", "No key $compare_rule.IGNORE_FIELD in '$paramfile_name'")
 		else:
 			self.ignore_field=[i.strip().lower() for i in param.get(self.compare_rule, 'IGNORE_FIELD').split(',')]
 
-
-
 		#------------- Manage FILE1 -------------
-		#If no FILE1_NAME, retrieve FILE1_NAME from param file
+		#If no FILE1, retrieve FILE1 from param file
 		if self.file1_name == '' : self.file1_name = None
-		if self.file1_name == None and "FILE1_NAME".lower() in param.options(self.compare_rule):
-			self.file1_name = self._clean_path( param.get(self.compare_rule, "FILE1_NAME"), self.file1_defaultdir) 
+		if self.file1_name == None and "FILE1".lower() in param.options(self.compare_rule):
+			self.file1_name = self._clean_path( param.get(self.compare_rule, "FILE1"), self.file1_defaultdir) 
 
-		#If still no FILE1_NAME, raise a warning 
+		#If still no FILE1, raise a warning 
 		if self.file1_name == None:
-			self.error("INIT", "file1_name=$file1_name")
+			self.error("INIT", "Please define parameter '--file1' or class attribute file1_name")
 		else:
 		#Get file1_name full clean path
 			self.file1_name = self._clean_path(self.file1_name)
 
 		#------------- Manage FILE2 -------------
-		#If no FILE2_NAME, retrieve FILE2_NAME from param file
+		#If no FILE2, retrieve FILE2 from param file
 		if self.file2_name == '' : self.file2_name = None
-		if self.file2_name == None and "FILE2_NAME".lower() in param.options(self.compare_rule):
-			self.file2_name = self._clean_path( param.get(self.compare_rule, "FILE2_NAME"), self.file2_defaultdir)
+		if self.file2_name == None and "FILE2".lower() in param.options(self.compare_rule):
+			self.file2_name = self._clean_path( param.get(self.compare_rule, "FILE2"), self.file2_defaultdir)
 
-		#If still no FILE2_NAME, raise an exception
+		#If still no FILE2, raise an exception
 		if self.file2_name == None:
-			self.error("INIT", "file2_name=$file2_name")
+			self.error("INIT", "Please define parameter '--file2' or class attribute file2_name")
 		else:
 		#Get file2_name full clean path
 			self.file2_name = self._clean_path(self.file2_name)
 
+		#------------- Manage dialect -------------
+		if 'DELIMITER1'.lower() in param.options(self.compare_rule):
+			self.debug("INIT", "CSV format sniffer disabled for file1")
+			try:
+				self.dialect1={
+					'delimiter':param.get(self.compare_rule, "DELIMITER1").replace('\\t', '\t'),
+					'doublequote':param.get(self.compare_rule, "DOUBLEQUOTE1"),
+					'escapechar':param.get(self.compare_rule, "ESCAPECHAR1"),
+					'lineterminator':  (param.get(self.compare_rule, "LINETERMINATOR1")).replace('\\n','\n').replace('\\r','\r'),
+					'quotechar':param.get(self.compare_rule, "QUOTECHAR1"),
+					'quoting':int(param.get(self.compare_rule, "QUOTING1")),
+					'skipinitialspace':param.get(self.compare_rule, "SKIPINITIALSPACE1")
+				}
+			except:
+				self.error("INIT", "DELIMITER1 is set for file1. All the other properties must also be set: DOUBLEQUOTE1, ESCAPECHAR1, LINETERMINATOR1, QUOTECHAR1, QUOTING1, SKIPINITIALSPACE1")
 
+		if 'DELIMITER2'.lower() in param.options(self.compare_rule):
+			self.debug("INIT", "CSV format sniffer disabled for file2")
+			try:
+				self.dialect2={
+					'delimiter':param.get(self.compare_rule, "DELIMITER2").replace('\\t', '\t'),
+					'doublequote':param.get(self.compare_rule, "DOUBLEQUOTE2"),
+					'escapechar':param.get(self.compare_rule, "ESCAPECHAR2"),
+					'lineterminator':  (param.get(self.compare_rule, "LINETERMINATOR2")).replace('\\n','\n').replace('\\r','\r'),
+					'quotechar':param.get(self.compare_rule, "QUOTECHAR2"),
+					'quoting':int(param.get(self.compare_rule, "QUOTING2")),
+					'skipinitialspace':param.get(self.compare_rule, "SKIPINITIALSPACE2")
+				}
+			except:
+				self.error("INIT", "DELIMITER2 is set for file2. All the other properties must also be set: DOUBLEQUOTE2, ESCAPECHAR2, LINETERMINATOR2, QUOTECHAR2, QUOTING2, SKIPINITIALSPACE2")
+			
 	def check_isfile(self):
 		#Ensure the file exists
 		if not os.path.isfile(self.file1_name):
@@ -270,33 +373,31 @@ class kucompare:
 			self.error("INIT", "Unable to find file2_name='$file2_name'")
 
 
-	def compare_csv(self):
+			
+			
+
 		#----------------------------------------------------
 		# Check the file dialects
+	def sniff_dialect1(self):
+	
+		#If dialect already set, no need to sniff
+		if hasattr(self, 'dialect1'): return
+		
+		#Check dialect1
 		try:
 
 			file1=open(self.file1_name, 'r')
-			file2=open(self.file2_name, 'r')
 			dialect1 = csv.Sniffer().sniff(file1.read(2000))
-			dialect2 = csv.Sniffer().sniff(file2.read(2000))
 			file1.seek(0)
-			file2.seek(0)
 		except:
 			del(file1)
-			del(file2)
-
 			try:
 				file1=open(self.file1_name, 'r')
-				file2=open(self.file2_name, 'r')
 				dialect1 = csv.Sniffer().sniff(file1.read(50))
-				dialect2 = csv.Sniffer().sniff(file2.read(50))
 				file1.seek(0)
-				file2.seek(0)
 			except Exception as e:
-				self.error("INIT", "Unable to open the csv files. "+ str(e))
+				self.error("INIT", self.file1_name + ": "+str(e)+". Common root causes are: empty file with no header, field count mismatch on the few first lines, string quote missmatch, string with carriage return not enclosed in quote, string with unescaped inner quote, file has less than 50 caracters. To disable sniffer feature, please define DELIMITER1 in param file")
 
-		#----------------------------------------------------
-		# Manage missmatching dialects
 		self.dialect1={
 			'delimiter':str(dialect1.delimiter),
 			'doublequote':dialect1.doublequote,
@@ -306,7 +407,32 @@ class kucompare:
 			'quoting':(dialect1.quoting),
 			'skipinitialspace':(dialect1.skipinitialspace)
 		}
+				
+		if self.dialect1['delimiter'] not in [',', ';', '|', '\t'] :
+			self.error("INIT","CSV format sniffer determined an unexpected delimiter for file1: " + repr(self.dialect1['delimiter']) +". You can enforce this DELIMITER1 value in param file")
 
+
+			
+			
+			
+	def sniff_dialect2(self):
+		#If dialect already set, no need to sniff
+		if hasattr(self, 'dialect2'): return
+		
+		try:
+			file2=open(self.file2_name, 'r')
+			dialect2 = csv.Sniffer().sniff(file2.read(2000))
+			file2.seek(0)
+		except:
+			del(file2)
+			try:
+				file2=open(self.file2_name, 'r')
+				dialect2 = csv.Sniffer().sniff(file2.read(50))
+				file2.seek(0)
+			except Exception as e:
+				self.error("INIT", self.file2_name + ": "+str(e)+". Common root causes are: empty file with no header, field count mismatch on the few first lines, string quote missmatch, string with carriage return not enclosed in quote, string with unescaped inner quote, file has less than 50 caracters. To disable sniffer feature, please define DELIMITER2 in param file")
+
+		#Check dialect2
 		self.dialect2={
 			'delimiter':str(dialect2.delimiter),
 			'doublequote':dialect2.doublequote,
@@ -317,20 +443,31 @@ class kucompare:
 			'skipinitialspace':(dialect2.skipinitialspace)
 		}
 
-		if self.dialect1['delimiter'] not in [',', ';', '|'] :
-			self.error("INIT","Unable to determine the field delimiter for '"+self.file1_name+"'. This shall be due to a missmatching number or fields on the first few records.")
+		if self.dialect2['delimiter'] not in [',', ';', '|', '\t'] :
+			self.error("INIT","CSV format sniffer determined an unexpected delimiter for file2: " + repr(self.dialect2['delimiter']) +". You can enforce this DELIMITER1 value in param file")
 
-		if self.dialect2['delimiter'] not in [',', ';', '|'] :
-			self.error("INIT","Unable to determine the field delimiter for '"+self.file2_name+"'. This shall be due to a missmatching number or fields on the first few records.")
+			
+			
+	def compare_csv(self):			
+		#----------------------------------------------------
+		# Manage missmatching dialects
 
 
 		checkFailed=False
 		for key in self.dialect1:
-			if self.dialect1[key] !=  self.dialect2[key]:
+			value1=repr(str(self.dialect1[key]))[1:-1]
+			value2=repr(str(self.dialect2[key]))[1:-1]
+			if value1 != value2:
 				checkFailed=True
-				self.failure('INIT', "CSV dialect missmatch. " + str(key) + " is '"+str( self.dialect1[key])
-				+ "' in file1 but '"+str( self.dialect2[key])+"' in file2")
-
+				#self.failure('INIT', "CSV dialect missmatch. " + str(key) + " is '"+value1
+				#+ "' in file1 but '"+value2+"' in file2")
+				self.failure("INIT", key='INIT', 
+					file1_value = value1,
+					file2_value = value2,
+					file1_line = 1,
+					file2_line = 1,
+					fieldname = "__"+str(key)+"__"
+					)
 		try:
 
 			tmp={k:v for k,v in self.dialect1.items() }
@@ -380,13 +517,14 @@ class kucompare:
 			self.failure("INIT", "Header2 match with additional fields: "+str(list(set(header2)-set(header1))))
 		elif len(set(header1) - set(header2))==0:
 			checkFailed=True
-			self.failure("INIT", "Header 2 has wrong field order",
-			fieldname='HEADER',
+			#self.failure("INIT", "Header 2 has wrong field order") 
+			self.failure("INIT", 
+			fieldname="__header__",
 			file1_value = str(header1),
 			file2_value = str(header2),
-			file1_line = "0",
-			file2_line = "0"
-				)
+			file1_line = "1",
+			file2_line = "1"
+			)
 			#self.failure("INIT", "Header 1: "+ str(header1))
 			#self.failure("INIT", "Header 2: "+ str(header2))
 		else:
@@ -600,7 +738,7 @@ class kucompare:
 
 if __name__ == '__main__':
 
-	res=kucompare()
+	res=Log()
 
 	try:
 		optlist, args = getopt.getopt(sys.argv[1:], 'p:r:1:2:h', ['help', 'param=', 'rule=', 'file1=', 'file2=', 'separator='])
@@ -619,6 +757,8 @@ if __name__ == '__main__':
 
 	res.read_param()
 	res.check_isfile()
+	res.sniff_dialect1()
+	res.sniff_dialect2()
 	res.compare_csv()
 
 
