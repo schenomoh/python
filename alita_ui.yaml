@@ -1,0 +1,88 @@
+#Key/value delimiter is column
+#Space after column is mandatory
+#Ordered items must start with a hyphen sign
+#Static field names are in upper case. They are used in the code
+
+#WINDOWS
+- BIND_KEY:
+    QUIT: 113
+    UP_ARROW: 259
+    DOWN_ARROW: 258
+    LEFT_ARROW: 260
+    RIGHT_ARROW: 261
+    ENTER: 10
+
+    
+- BANNER:
+    TOP_MARGIN: 0
+    RIGHT_MARGIN: 20
+    LEFT_MARGIN: 0
+    VISIBLE_HEIGHT: 3
+    OBJECT_ID: 0
+    TEXT_SELECTED: 176
+    BACKGROUND_SELECTED: 225
+    TEXT_NORMAL: 176
+    BACKGROUND_NORMAL: 225
+    PAD_ITEMS:
+        - Alita: ""
+#UNIX
+#- BIND_KEY: 
+#    QUIT: 113
+#    UP_ARROW: 65
+#    DOWN_ARROW: 66
+#    LEFT_ARROW: 68
+#    RIGHT_ARROW: 67
+#    ENTER: 10
+
+#First menu line
+- MENU_PAD:
+    TOP_MARGIN: 0
+    RIGHT_MARGIN: 20
+    LEFT_MARGIN: 8
+    VISIBLE_HEIGHT: 1
+    OBJECT_ID: 1
+    TEXT_NORMAL: 25
+    BACKGROUND_NORMAL: 189
+    TEXT_SELECTED: 231
+    BACKGROUND_SELECTED: 189
+    PAD_ITEMS:
+        - module:
+            os_command: dir
+        - setting:
+            os_command: dir
+        - inf_user: ""
+        - status: ""
+
+#Second menu line
+- MENU_PAD:
+    TOP_MARGIN: 1
+    RIGHT_MARGIN: 8
+    LEFT_MARGIN: 9
+    VISIBLE_HEIGHT: 1
+    OBJECT_ID: 2
+    TEXT_NORMAL: 25
+    BACKGROUND_NORMAL: 117
+    TEXT_SELECTED: 231
+    BACKGROUND_SELECTED: 117
+    PAD_ITEMS:
+        - restart: ""
+        - load: ""
+        - usecase: ""
+        - loop: ""
+
+#Second menu line
+- MENU_PAD:
+    TOP_MARGIN: 2
+    RIGHT_MARGIN: 12
+    LEFT_MARGIN: 12
+    VISIBLE_HEIGHT: 1
+    OBJECT_ID: 3
+    TEXT_NORMAL: 25
+    BACKGROUND_NORMAL: 176
+    TEXT_SELECTED: 231
+    BACKGROUND_SELECTED: 176
+    PAD_ITEMS:
+        - restart: ""
+        - load: ""
+        - cls: ""
+        - "--": ""
